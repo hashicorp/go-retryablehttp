@@ -13,9 +13,9 @@ standard `net/http` client library and exposes nearly the same public API. This
 makes `retryablehttp` very easy to drop into existing programs.
 
 `retryablehttp` performs automatic retries under certain conditions. Mainly, if
-an error is returned by the client (connection errors etc), or if a 500-range
-response is received, then a retry is invoked. Otherwise, the response is
-returned and left to the caller to interpret.
+an error is returned by the client (connection errors, etc.), or if a 500-range
+response code is received, then a retry is invoked after a wait period.
+Otherwise, the response is returned and left to the caller to interpret.
 
 The main difference from `net/http` is that requests which take a request body
 (POST/PUT et. al) require an `io.ReadSeeker` to be provided. This enables the
@@ -40,4 +40,4 @@ usually get from `net/http`. Had the request failed one or more times, the above
 call would block and retry with exponential backoff.
 
 For more usage and examples see the
-[godoc](http://godoc.org/github.com/hashicorp/go-gatedio).
+[godoc](http://godoc.org/github.com/hashicorp/go-retryablehttp).
