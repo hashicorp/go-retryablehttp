@@ -7,6 +7,9 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-cleanhttp"
@@ -17,6 +20,10 @@ var (
 	defaultRetryWaitMin = 1 * time.Second
 	defaultRetryWaitMax = 5 * time.Minute
 	defaultRetryMax     = 32
+
+	// defaultClient is used for performing requests without explicitly making
+	// a new client. It is purposely private to avoid modifications.
+	defaultClient = NewClient()
 )
 
 // LenReader is an interface implemented by many in-memory io.Reader's. Used
@@ -60,25 +67,21 @@ func NewRequest(method, url string, body io.ReadSeeker) (*Request, error) {
 }
 
 // Client is used to make HTTP requests. It adds additional functionality
-// like automatic retries so that our internal services can tolerate minor
-// outages.
+// like automatic retries to tolerate minor outages.
 type Client struct {
-	HTTPClient *http.Client
+	HTTPClient *http.Client // Internal HTTP client.
+	Logger     *log.Logger  // Customer logger instance.
 
 	RetryWaitMin time.Duration // Minimum time to wait
 	RetryWaitMax time.Duration // Maximum time to wait
 	RetryMax     int           // Maximum number of retries
 }
 
-// NewClient creates a new Client. By default, HTTP this client has HTTP
-// keepalives disabled.
+// NewClient creates a new Client.
 func NewClient() *Client {
-	// Create the HTTP client with keepalives disabled.
-	client := cleanhttp.DefaultClient()
-	client.Transport.(*http.Transport).DisableKeepAlives = true
-
 	return &Client{
-		HTTPClient:   client,
+		HTTPClient:   cleanhttp.DefaultClient(),
+		Logger:       log.New(os.Stderr, "", log.LstdFlags),
 		RetryWaitMin: defaultRetryWaitMin,
 		RetryWaitMax: defaultRetryWaitMax,
 		RetryMax:     defaultRetryMax,
@@ -87,7 +90,7 @@ func NewClient() *Client {
 
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
-	log.Printf("[DEBUG] %s %s", req.Method, req.URL)
+	c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
 
 	for i := 0; ; i++ {
 		var code int // HTTP response code
@@ -102,7 +105,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		// Attempt the request
 		resp, err := c.HTTPClient.Do(req.Request)
 		if err != nil {
-			log.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
+			c.Logger.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
 			goto RETRY
 		}
 		code = resp.StatusCode
@@ -125,13 +128,18 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if code > 0 {
 			desc = fmt.Sprintf("%s (status: %d)", desc, code)
 		}
-		log.Printf("[DEBUG] %s: retrying in %s", desc, wait)
+		c.Logger.Printf("[DEBUG] %s: retrying in %s", desc, wait)
 		time.Sleep(wait)
 	}
 
 	// Return an error if we fall out of the retry loop
 	return nil, fmt.Errorf("%s %s giving up after %d attempts",
 		req.Method, req.URL, c.RetryMax+1)
+}
+
+// Get is a shortcut for doing a GET request without making a new client.
+func Get(url string) (*http.Response, error) {
+	return defaultClient.Get(url)
 }
 
 // Get is a convenience helper for doing simple GET requests.
@@ -141,6 +149,47 @@ func (c *Client) Get(url string) (*http.Response, error) {
 		return nil, err
 	}
 	return c.Do(req)
+}
+
+// Head is a shortcut for doing a HEAD request without making a new client.
+func Head(url string) (*http.Response, error) {
+	return defaultClient.Head(url)
+}
+
+// Head is a convenience method for doing simple HEAD requests.
+func (c *Client) Head(url string) (*http.Response, error) {
+	req, err := NewRequest("HEAD", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return c.Do(req)
+}
+
+// Post is a shortcut for doing a POST request without making a new client.
+func Post(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	return defaultClient.Post(url, bodyType, body)
+}
+
+// Post is a convenience method for doing simple POST requests.
+func (c *Client) Post(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	req, err := NewRequest("POST", url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", bodyType)
+	return c.Do(req)
+}
+
+// PostForm is a shortcut to perform a POST with form data without creating
+// a new client.
+func PostForm(url string, data url.Values) (*http.Response, error) {
+	return defaultClient.PostForm(url, data)
+}
+
+// PostForm is a convenience method for doing simple POST operations using
+// pre-filled url.Values form data.
+func (c *Client) PostForm(url string, data url.Values) (*http.Response, error) {
+	return c.Post(url, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 }
 
 // backoff is used to calculate how long to sleep before retrying

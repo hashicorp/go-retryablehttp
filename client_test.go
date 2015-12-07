@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -181,6 +182,106 @@ func TestClient_Get(t *testing.T) {
 
 	// Make the request.
 	resp, err := NewClient().Get(ts.URL + "/foo/bar")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	resp.Body.Close()
+}
+
+func TestClient_Head(t *testing.T) {
+	// Mock server which always responds 200.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "HEAD" {
+			t.Fatalf("bad method: %s", r.Method)
+		}
+		if r.RequestURI != "/foo/bar" {
+			t.Fatalf("bad uri: %s", r.RequestURI)
+		}
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	// Make the request.
+	resp, err := NewClient().Head(ts.URL + "/foo/bar")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	resp.Body.Close()
+}
+
+func TestClient_Post(t *testing.T) {
+	// Mock server which always responds 200.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Fatalf("bad method: %s", r.Method)
+		}
+		if r.RequestURI != "/foo/bar" {
+			t.Fatalf("bad uri: %s", r.RequestURI)
+		}
+		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
+			t.Fatalf("bad content-type: %s", ct)
+		}
+
+		// Check the payload
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("err: %s", err)
+		}
+		expected := []byte(`{"hello":"world"}`)
+		if !bytes.Equal(body, expected) {
+			t.Fatalf("bad: %v", body)
+		}
+
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	// Make the request.
+	resp, err := NewClient().Post(
+		ts.URL+"/foo/bar",
+		"application/json",
+		strings.NewReader(`{"hello":"world"}`))
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	resp.Body.Close()
+}
+
+func TestClient_PostForm(t *testing.T) {
+	// Mock server which always responds 200.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Fatalf("bad method: %s", r.Method)
+		}
+		if r.RequestURI != "/foo/bar" {
+			t.Fatalf("bad uri: %s", r.RequestURI)
+		}
+		if ct := r.Header.Get("Content-Type"); ct != "application/x-www-form-urlencoded" {
+			t.Fatalf("bad content-type: %s", ct)
+		}
+
+		// Check the payload
+		body, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("err: %s", err)
+		}
+		expected := []byte(`hello=world`)
+		if !bytes.Equal(body, expected) {
+			t.Fatalf("bad: %v", body)
+		}
+
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	// Create the form data.
+	form, err := url.ParseQuery("hello=world")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// Make the request.
+	resp, err := NewClient().PostForm(ts.URL+"/foo/bar", form)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
