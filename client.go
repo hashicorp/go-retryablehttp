@@ -1,3 +1,17 @@
+// The retryablehttp package provides a familiar HTTP client interface with
+// automatic retries and exponential backoff. It is a thin wrapper over the
+// standard net/http client library and exposes nearly the same public API.
+// This makes retryablehttp very easy to drop into existing programs.
+//
+// retryablehttp performs automatic retries under certain conditions. Mainly, if
+// an error is returned by the client (connection errors etc), or if a 500-range
+// response is received, then a retry is invoked. Otherwise, the response is
+// returned and left to the caller to interpret.
+//
+// The main difference from net/http is that requests which take a request body
+// (POST/PUT et. al) require an io.ReadSeeker to be provided. This enables the
+// request body to be "rewound" if the initial request fails so that the full
+// request can be attempted again.
 package retryablehttp
 
 import (
@@ -77,7 +91,7 @@ type Client struct {
 	RetryMax     int           // Maximum number of retries
 }
 
-// NewClient creates a new Client.
+// NewClient creates a new Client with default settings.
 func NewClient() *Client {
 	return &Client{
 		HTTPClient:   cleanhttp.DefaultClient(),
