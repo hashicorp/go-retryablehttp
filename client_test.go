@@ -3,9 +3,11 @@ package retryablehttp
 import (
 	"bytes"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	"net/url"
 	"strings"
 	"sync/atomic"
@@ -54,11 +56,31 @@ func TestClient_Do(t *testing.T) {
 	}
 	req.Header.Set("foo", "bar")
 
+	// Track the number of times the logging hook was called
+	retryCount := -1
+
 	// Create the client. Use short retry windows.
 	client := NewClient()
 	client.RetryWaitMin = 10 * time.Millisecond
 	client.RetryWaitMax = 50 * time.Millisecond
 	client.RetryMax = 50
+	client.RequestLogHook = func(logger *log.Logger, req *http.Request, retryNumber int) {
+		retryCount = retryNumber
+
+		if logger != client.Logger {
+			t.Fatalf("Client logger was not passed to logging hook")
+		}
+
+		dumpBytes, err := httputil.DumpRequestOut(req, false)
+		if err != nil {
+			t.Fatal("Dumping requests failed")
+		}
+
+		dumpString := string(dumpBytes)
+		if !strings.Contains(dumpString, "PUT /v1/foo") {
+			t.Fatalf("Bad request dump:\n%s", dumpString)
+		}
+	}
 
 	// Send the request
 	var resp *http.Response
@@ -139,6 +161,10 @@ func TestClient_Do(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("exected 200, got: %d", resp.StatusCode)
 	}
+
+	if retryCount < 0 {
+		t.Fatal("request log hook was not called")
+	}
 }
 
 func TestClient_Do_fails(t *testing.T) {
@@ -168,7 +194,6 @@ func TestClient_Do_fails(t *testing.T) {
 }
 
 func TestClient_Get(t *testing.T) {
-	// Mock server which always responds 500.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			t.Fatalf("bad method: %s", r.Method)
@@ -186,6 +211,52 @@ func TestClient_Get(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 	resp.Body.Close()
+}
+
+func TestClient_RequestLogHook(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Fatalf("bad method: %s", r.Method)
+		}
+		if r.RequestURI != "/foo/bar" {
+			t.Fatalf("bad uri: %s", r.RequestURI)
+		}
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	retries := -1
+	testURIPath := "/foo/bar"
+
+	client := NewClient()
+	client.RequestLogHook = func(logger *log.Logger, req *http.Request, retry int) {
+		retries = retry
+
+		if logger != client.Logger {
+			t.Fatalf("Client logger was not passed to logging hook")
+		}
+
+		dumpBytes, err := httputil.DumpRequestOut(req, false)
+		if err != nil {
+			t.Fatal("Dumping requests failed")
+		}
+
+		dumpString := string(dumpBytes)
+		if !strings.Contains(dumpString, "GET "+testURIPath) {
+			t.Fatalf("Bad request dump:\n%s", dumpString)
+		}
+	}
+
+	// Make the request.
+	resp, err := client.Get(ts.URL + testURIPath)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	resp.Body.Close()
+
+	if retries < 0 {
+		t.Fatal("Logging hook was not called")
+	}
 }
 
 func TestClient_Head(t *testing.T) {
