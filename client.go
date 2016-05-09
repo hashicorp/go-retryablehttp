@@ -148,7 +148,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		return resp, nil
 
 	RETRY:
-		if i == c.RetryMax {
+		remain := c.RetryMax - i
+		if remain == 0 {
 			break
 		}
 		wait := backoff(c.RetryWaitMin, c.RetryWaitMax, i)
@@ -156,7 +157,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if code > 0 {
 			desc = fmt.Sprintf("%s (status: %d)", desc, code)
 		}
-		c.Logger.Printf("[DEBUG] %s: retrying in %s", desc, wait)
+		c.Logger.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
 		time.Sleep(wait)
 	}
 
