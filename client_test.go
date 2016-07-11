@@ -259,6 +259,49 @@ func TestClient_RequestLogHook(t *testing.T) {
 	}
 }
 
+func TestClient_ResponseLogHook(t *testing.T) {
+	passAfter := time.Now().Add(time.Second)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if time.Now().After(passAfter) {
+			w.WriteHeader(200)
+			w.Write([]byte("success"))
+		} else {
+			w.WriteHeader(500)
+			w.Write([]byte("failure"))
+		}
+	}))
+	defer ts.Close()
+
+	buf := new(bytes.Buffer)
+
+	client := NewClient()
+	client.Logger = log.New(buf, "", log.LstdFlags)
+	client.RetryWaitMin = 100 * time.Millisecond
+	client.RetryWaitMax = 100 * time.Millisecond
+	client.ResponseLogHook = func(logger *log.Logger, resp *http.Response) {
+		if resp.StatusCode == 200 {
+			logger.Println("pass")
+		} else {
+			logger.Println("fail")
+		}
+	}
+
+	for i := 0; i < 10; i++ {
+		if _, err := client.Get(ts.URL); err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "pass") {
+		t.Fatalf("expect response callback on 200: %q", out)
+	}
+	if !strings.Contains(out, "fail") {
+		t.Fatalf("expect response callback on 500: %q", out)
+	}
+}
+
 func TestClient_Head(t *testing.T) {
 	// Mock server which always responds 200.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
