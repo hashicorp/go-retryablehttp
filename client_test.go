@@ -259,6 +259,65 @@ func TestClient_RequestLogHook(t *testing.T) {
 	}
 }
 
+func TestClient_ResponseLogHook(t *testing.T) {
+	passAfter := time.Now().Add(time.Second)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if time.Now().After(passAfter) {
+			w.WriteHeader(200)
+			w.Write([]byte("test_200_body"))
+		} else {
+			w.WriteHeader(500)
+			w.Write([]byte("test_500_body"))
+		}
+	}))
+	defer ts.Close()
+
+	buf := new(bytes.Buffer)
+
+	client := NewClient()
+	client.Logger = log.New(buf, "", log.LstdFlags)
+	client.RetryWaitMin = 100 * time.Millisecond
+	client.RetryWaitMax = 100 * time.Millisecond
+	client.ResponseLogHook = func(logger *log.Logger, resp *http.Response) {
+		if resp.StatusCode == 200 {
+			// Log something when we get a 200
+			logger.Printf("test_log_pass")
+		} else {
+			// Log the response body when we get a 500
+			body, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			logger.Printf("%s", body)
+		}
+	}
+
+	// Perform the request. Exits when we finally get a 200.
+	resp, err := client.Get(ts.URL)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// Make sure we can read the response body still, since we did not
+	// read or close it from the response log hook.
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if string(body) != "test_200_body" {
+		t.Fatalf("expect %q, got %q", "test_200_body", string(body))
+	}
+
+	// Make sure we wrote to the logger on callbacks.
+	out := buf.String()
+	if !strings.Contains(out, "test_log_pass") {
+		t.Fatalf("expect response callback on 200: %q", out)
+	}
+	if !strings.Contains(out, "test_500_body") {
+		t.Fatalf("expect response callback on 500: %q", out)
+	}
+}
+
 func TestClient_Head(t *testing.T) {
 	// Mock server which always responds 200.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
