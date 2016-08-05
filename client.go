@@ -38,6 +38,10 @@ var (
 	// defaultClient is used for performing requests without explicitly making
 	// a new client. It is purposely private to avoid modifications.
 	defaultClient = NewClient()
+
+	// We need to consume response bodied to maintain http connections, but
+	// limit the size we consume to respReadLimit.
+	respReadLimit = int64(4 << 10)
 )
 
 // LenReader is an interface implemented by many in-memory io.Reader's. Used
@@ -158,7 +162,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		// the server time to recover, as 500's are typically not permanent
 		// errors and may relate to outages on the server side.
 		if code%500 < 100 {
-			resp.Body.Close()
+			c.drainBody(resp.Body)
 			goto RETRY
 		}
 		return resp, nil
@@ -180,6 +184,15 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	// Return an error if we fall out of the retry loop
 	return nil, fmt.Errorf("%s %s giving up after %d attempts",
 		req.Method, req.URL, c.RetryMax+1)
+}
+
+// Try to read the response body so we can reuse this connection.
+func (c *Client) drainBody(body io.ReadCloser) {
+	defer body.Close()
+	_, err := io.Copy(ioutil.Discard, &io.LimitedReader{R: body, N: respReadLimit})
+	if err != nil {
+		c.Logger.Printf("[ERR] error reading response body: %v", err)
+	}
 }
 
 // Get is a shortcut for doing a GET request without making a new client.
