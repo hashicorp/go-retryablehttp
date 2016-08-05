@@ -39,9 +39,9 @@ var (
 	// a new client. It is purposely private to avoid modifications.
 	defaultClient = NewClient()
 
-	// We need to consume response bodied to maintain http connections, but
+	// We need to consume response bodies to maintain http connections, but
 	// limit the size we consume to respReadLimit.
-	respReadLimit = int64(4 << 10)
+	respReadLimit = int64(4096)
 )
 
 // LenReader is an interface implemented by many in-memory io.Reader's. Used
@@ -114,6 +114,15 @@ type Client struct {
 	// ResponseLogHook allows a user-supplied function to be called
 	// with the response from each HTTP request executed.
 	ResponseLogHook ResponseLogHook
+
+	// CheckRetry specifies a policy for handling retries. It is called
+	// following each request with the response and error values returned by
+	// the http.Client. If CheckRetry returns false, the Client stops retrying
+	// and returns the response to the caller. If CheckRetry returns an error,
+	// that error value is returned in lieu of the error from the request. If
+	// an error is returned, it is up to the CheckResponse callback to properly
+	// close any response body before returning.
+	CheckRetry func(resp *http.Response, err error) (bool, error)
 }
 
 // NewClient creates a new Client with default settings.
@@ -127,9 +136,30 @@ func NewClient() *Client {
 	}
 }
 
+// DefaultRetryPolicy provides a default callback for Client.CheckRetry, which
+// will retry on connection errors and server errors.
+func DefaultRetryPolicy(resp *http.Response, err error) (bool, error) {
+	if err != nil {
+		return true, err
+	}
+	// Check the response code. We retry on 500-range responses to allow
+	// the server time to recover, as 500's are typically not permanent
+	// errors and may relate to outages on the server side. This will catch
+	// invalid response codes as well, like 0 and 999.
+	if resp.StatusCode == 0 || resp.StatusCode >= 500 {
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
 	c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
+
+	if c.CheckRetry == nil {
+		c.CheckRetry = DefaultRetryPolicy
+	}
 
 	for i := 0; ; i++ {
 		var code int // HTTP response code
@@ -147,27 +177,34 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		// Attempt the request
 		resp, err := c.HTTPClient.Do(req.Request)
+
+		// Check if we should continue with retries.
+		checkOK, checkErr := c.CheckRetry(resp, err)
+
 		if err != nil {
 			c.Logger.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
-			goto RETRY
+		} else {
+			// Call this here to maintain the behavior of logging all requests,
+			// even if CheckRetry signals to stop.
+			if c.ResponseLogHook != nil {
+				// Call the response logger function if provided.
+				c.ResponseLogHook(c.Logger, resp)
+			}
 		}
-		code = resp.StatusCode
 
-		// Call the response logger function if provided.
-		if c.ResponseLogHook != nil {
-			c.ResponseLogHook(c.Logger, resp)
+		// Now decide if we should continue.
+		if !checkOK {
+			if checkErr != nil {
+				err = checkErr
+			}
+			return resp, err
 		}
 
-		// Check the response code. We retry on 500-range responses to allow
-		// the server time to recover, as 500's are typically not permanent
-		// errors and may relate to outages on the server side.
-		if code%500 < 100 {
+		// We're going to retry, consume any response to reuse the connection.
+		if err == nil {
 			c.drainBody(resp.Body)
-			goto RETRY
 		}
-		return resp, nil
 
-	RETRY:
 		remain := c.RetryMax - i
 		if remain == 0 {
 			break
@@ -191,6 +228,10 @@ func (c *Client) drainBody(body io.ReadCloser) {
 	defer body.Close()
 	_, err := io.Copy(ioutil.Discard, &io.LimitedReader{R: body, N: respReadLimit})
 	if err != nil {
+		// don't log this if the body was closed by the ResponseLogHook or CheckRetry
+		if strings.Contains(err.Error(), "read on closed response body") {
+			return
+		}
 		c.Logger.Printf("[ERR] error reading response body: %v", err)
 	}
 }
