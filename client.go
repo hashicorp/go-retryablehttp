@@ -119,9 +119,10 @@ type Client struct {
 	// following each request with the response and error values returned by
 	// the http.Client. If CheckRetry returns false, the Client stops retrying
 	// and returns the response to the caller. If CheckRetry returns an error,
-	// that error value is returned in lieu of the error from the request. If
-	// an error is returned, it is up to the CheckResponse callback to properly
-	// close any response body before returning.
+	// that error value is returned in lieu of the error from the request. The
+	// Client will close any response body when retrying, but if the retry is
+	// aborted it is up to the CheckResponse callback to properly close any
+	// response body before returning.
 	CheckRetry func(resp *http.Response, err error) (bool, error)
 }
 
@@ -226,12 +227,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 // Try to read the response body so we can reuse this connection.
 func (c *Client) drainBody(body io.ReadCloser) {
 	defer body.Close()
-	_, err := io.Copy(ioutil.Discard, &io.LimitedReader{R: body, N: respReadLimit})
+	_, err := io.Copy(ioutil.Discard, io.LimitReader(body, respReadLimit))
 	if err != nil {
-		// don't log this if the body was closed by the ResponseLogHook or CheckRetry
-		if strings.Contains(err.Error(), "read on closed response body") {
-			return
-		}
 		c.Logger.Printf("[ERR] error reading response body: %v", err)
 	}
 }

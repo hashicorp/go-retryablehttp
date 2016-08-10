@@ -342,11 +342,7 @@ func TestClient_CheckRetry(t *testing.T) {
 	_, err := client.Get(ts.URL)
 
 	if called != 1 {
-		t.Fatal("we didn't retry the correct number of times")
-	}
-
-	if err == nil {
-		t.Fatal("expected error from request")
+		t.Fatalf("CheckRetry called %d times, expected 1", called)
 	}
 
 	if err != retryErr {
@@ -371,12 +367,8 @@ func TestClient_CheckRetryStop(t *testing.T) {
 
 	_, err := client.Get(ts.URL)
 
-	if called == 0 {
-		t.Fatal("CheckRetry wasn't called")
-	}
-
-	if called > 1 {
-		t.Fatal("client shouldn't have retried")
+	if called != 1 {
+		t.Fatalf("CheckRetry called %d times, expeted 1", called)
 	}
 
 	if err != nil {
