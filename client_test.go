@@ -2,6 +2,7 @@ package retryablehttp
 
 import (
 	"bytes"
+	"errors"
 	"io/ioutil"
 	"log"
 	"net"
@@ -315,6 +316,63 @@ func TestClient_ResponseLogHook(t *testing.T) {
 	}
 	if !strings.Contains(out, "test_500_body") {
 		t.Fatalf("expect response callback on 500: %q", out)
+	}
+}
+
+func TestClient_CheckRetry(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "test_500_body", http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	client := NewClient()
+
+	retryErr := errors.New("retryError")
+	called := 0
+	client.CheckRetry = func(resp *http.Response, err error) (bool, error) {
+		if called < 1 {
+			called++
+			return DefaultRetryPolicy(resp, err)
+		}
+
+		return false, retryErr
+	}
+
+	// CheckRetry should return our retryErr value and stop the retry loop.
+	_, err := client.Get(ts.URL)
+
+	if called != 1 {
+		t.Fatalf("CheckRetry called %d times, expected 1", called)
+	}
+
+	if err != retryErr {
+		t.Fatalf("Expected retryError, got:%v", err)
+	}
+}
+
+func TestClient_CheckRetryStop(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "test_500_body", http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	client := NewClient()
+
+	// Verify that this stops retries on the first try, with no errors from the client.
+	called := 0
+	client.CheckRetry = func(resp *http.Response, err error) (bool, error) {
+		called++
+		return false, nil
+	}
+
+	_, err := client.Get(ts.URL)
+
+	if called != 1 {
+		t.Fatalf("CheckRetry called %d times, expeted 1", called)
+	}
+
+	if err != nil {
+		t.Fatalf("Expected no error, got:%v", err)
 	}
 }
 
