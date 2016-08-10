@@ -97,6 +97,16 @@ type RequestLogHook func(*log.Logger, *http.Request, int)
 // from this method, this will affect the response returned from Do().
 type ResponseLogHook func(*log.Logger, *http.Response)
 
+// CheckRetry specifies a policy for handling retries. It is called
+// following each request with the response and error values returned by
+// the http.Client. If CheckRetry returns false, the Client stops retrying
+// and returns the response to the caller. If CheckRetry returns an error,
+// that error value is returned in lieu of the error from the request. The
+// Client will close any response body when retrying, but if the retry is
+// aborted it is up to the CheckResponse callback to properly close any
+// response body before returning.
+type CheckRetry func(resp *http.Response, err error) (bool, error)
+
 // Client is used to make HTTP requests. It adds additional functionality
 // like automatic retries to tolerate minor outages.
 type Client struct {
@@ -115,15 +125,9 @@ type Client struct {
 	// with the response from each HTTP request executed.
 	ResponseLogHook ResponseLogHook
 
-	// CheckRetry specifies a policy for handling retries. It is called
-	// following each request with the response and error values returned by
-	// the http.Client. If CheckRetry returns false, the Client stops retrying
-	// and returns the response to the caller. If CheckRetry returns an error,
-	// that error value is returned in lieu of the error from the request. The
-	// Client will close any response body when retrying, but if the retry is
-	// aborted it is up to the CheckResponse callback to properly close any
-	// response body before returning.
-	CheckRetry func(resp *http.Response, err error) (bool, error)
+	// CheckRetry specifies the policy for handling retries, and is called
+	// after each request. The default policy is DefaultRetryPolicy.
+	CheckRetry CheckRetry
 }
 
 // NewClient creates a new Client with default settings.
@@ -134,6 +138,7 @@ func NewClient() *Client {
 		RetryWaitMin: defaultRetryWaitMin,
 		RetryWaitMax: defaultRetryWaitMax,
 		RetryMax:     defaultRetryMax,
+		CheckRetry:   DefaultRetryPolicy,
 	}
 }
 
@@ -157,10 +162,6 @@ func DefaultRetryPolicy(resp *http.Response, err error) (bool, error) {
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
 	c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
-
-	if c.CheckRetry == nil {
-		c.CheckRetry = DefaultRetryPolicy
-	}
 
 	for i := 0; ; i++ {
 		var code int // HTTP response code
