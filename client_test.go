@@ -261,7 +261,7 @@ func TestClient_RequestLogHook(t *testing.T) {
 }
 
 func TestClient_ResponseLogHook(t *testing.T) {
-	passAfter := time.Now().Add(time.Second)
+	passAfter := time.Now().Add(100 * time.Millisecond)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if time.Now().After(passAfter) {
 			w.WriteHeader(200)
@@ -277,8 +277,9 @@ func TestClient_ResponseLogHook(t *testing.T) {
 
 	client := NewClient()
 	client.Logger = log.New(buf, "", log.LstdFlags)
-	client.RetryWaitMin = 100 * time.Millisecond
-	client.RetryWaitMax = 100 * time.Millisecond
+	client.RetryWaitMin = 10 * time.Millisecond
+	client.RetryWaitMax = 10 * time.Millisecond
+	client.RetryMax = 15
 	client.ResponseLogHook = func(logger *log.Logger, resp *http.Response) {
 		if resp.StatusCode == 200 {
 			// Log something when we get a 200
