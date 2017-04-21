@@ -194,6 +194,33 @@ func TestClient_Do_fails(t *testing.T) {
 	}
 }
 
+func TestClient_Do_doesNotRetryOnURISchemeErrors(t *testing.T) {
+	// Create the client. Use short retry windows so we fail faster.
+	client := NewClient()
+	client.RetryWaitMin = 10 * time.Millisecond
+	client.RetryWaitMax = 10 * time.Millisecond
+	client.RetryMax = 2
+
+	// Create the request
+	req, err := NewRequest("GET", "not/a/url", nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// Verify no retries happen for this kind of error
+	client.RequestLogHook = func(_ *log.Logger, _ *http.Request, i int) {
+		if i > 0 {
+			t.Fatalf("Should not retry")
+		}
+	}
+
+	// Send the request.
+	_, err = client.Do(req)
+	if err == nil {
+		t.Fatalf("expected error, got: %#v", err)
+	}
+}
+
 func TestClient_Get(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
