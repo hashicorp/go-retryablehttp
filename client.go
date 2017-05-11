@@ -42,6 +42,9 @@ var (
 	// We need to consume response bodies to maintain http connections, but
 	// limit the size we consume to respReadLimit.
 	respReadLimit = int64(4096)
+
+	// defaultLogMode is to log both of request and retry
+	defaultDebugLogMode = LogRequestAndRetry
 )
 
 // LenReader is an interface implemented by many in-memory io.Reader's. Used
@@ -107,6 +110,18 @@ type ResponseLogHook func(*log.Logger, *http.Response)
 // response body before returning.
 type CheckRetry func(resp *http.Response, err error) (bool, error)
 
+// DebugLogMode is a type alias of int to use determine to log or not
+type DebugLogMode int
+
+const (
+	// NotLog is one of LogMode, not to log anything
+	NotLog DebugLogMode = iota
+	// LogOnlyOnRetry is one of LogMode, to log only when occured retrying
+	LogOnlyOnRetry
+	// LogRequestAndRetry is one of LogMode, to log when sending request and retrying it
+	LogRequestAndRetry
+)
+
 // Client is used to make HTTP requests. It adds additional functionality
 // like automatic retries to tolerate minor outages.
 type Client struct {
@@ -128,6 +143,10 @@ type Client struct {
 	// CheckRetry specifies the policy for handling retries, and is called
 	// after each request. The default policy is DefaultRetryPolicy.
 	CheckRetry CheckRetry
+
+	// LogMode determine logging or not logging when send a request
+	// or when occured retry or both.
+	DebugLogMode DebugLogMode
 }
 
 // NewClient creates a new Client with default settings.
@@ -139,6 +158,7 @@ func NewClient() *Client {
 		RetryWaitMax: defaultRetryWaitMax,
 		RetryMax:     defaultRetryMax,
 		CheckRetry:   DefaultRetryPolicy,
+		DebugLogMode: defaultDebugLogMode,
 	}
 }
 
@@ -161,7 +181,9 @@ func DefaultRetryPolicy(resp *http.Response, err error) (bool, error) {
 
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
-	c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
+	if c.DebugLogMode == LogRequestAndRetry {
+		c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
+	}
 
 	for i := 0; ; i++ {
 		var code int // HTTP response code
@@ -216,7 +238,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if code > 0 {
 			desc = fmt.Sprintf("%s (status: %d)", desc, code)
 		}
-		c.Logger.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
+		if c.DebugLogMode > NotLog {
+			c.Logger.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
+		}
 		time.Sleep(wait)
 	}
 
