@@ -142,6 +142,9 @@ func NewClient() *Client {
 	}
 }
 
+// net.Error and url.Error have a Temporary() bool that tells us if their
+// errors are retryable, rather than typecheck for the specific error
+// classes, we just use that same interface
 type temporary interface {
 	Temporary() bool
 }
@@ -152,9 +155,6 @@ func DefaultRetryPolicy(resp *http.Response, err error) (bool, error) {
 	if err != nil {
 		retryable := true
 		switch t := err.(type) {
-		// net.Error and url.Error have a Temporary() bool that tells us if their
-		// errors are retryable, rather than typecheck for the specific error
-		// classes, we just use that same interface
 		case temporary:
 			retryable = t.Temporary()
 		}
@@ -196,7 +196,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		checkOK, checkErr := c.CheckRetry(resp, err)
 
 		if err != nil {
-			c.Logger.Printf("[ERR] %s %s request failed: %v (%T)", req.Method, req.URL, err, err)
+			c.Logger.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
 			// even if CheckRetry signals to stop.
