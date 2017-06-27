@@ -524,7 +524,7 @@ func TestBackoff(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		if v := backoff(tc.min, tc.max, tc.i); v != tc.expect {
+		if v := DefaultBackoffPolicy(tc.min, tc.max, tc.i); v != tc.expect {
 			t.Fatalf("bad: %#v -> %s", tc, v)
 		}
 	}
