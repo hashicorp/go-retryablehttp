@@ -110,7 +110,7 @@ type CheckRetry func(resp *http.Response, err error) (bool, error)
 // Backoff specifies a policy for how long to wait between retries.
 // It is called after a failing request to determine the amount of time
 // that should pass before trying again.
-type Backoff func(min, max time.Duration, attemptNum int) time.Duration
+type Backoff func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration
 
 // Client is used to make HTTP requests. It adds additional functionality
 // like automatic retries to tolerate minor outages.
@@ -134,7 +134,7 @@ type Client struct {
 	// after each request. The default policy is DefaultRetryPolicy.
 	CheckRetry CheckRetry
 
-	// BackoffRetry specifies the policy for how long to wait between retries
+	// Backoff specifies the policy for how long to wait between retries
 	Backoff Backoff
 }
 
@@ -147,7 +147,7 @@ func NewClient() *Client {
 		RetryWaitMax: defaultRetryWaitMax,
 		RetryMax:     defaultRetryMax,
 		CheckRetry:   DefaultRetryPolicy,
-		Backoff:      DefaultBackoffPolicy,
+		Backoff:      DefaultBackoff,
 	}
 }
 
@@ -168,10 +168,10 @@ func DefaultRetryPolicy(resp *http.Response, err error) (bool, error) {
 	return false, nil
 }
 
-// DefaultBackoffPolicy provides a default callback for Client.Backoff which
+// DefaultBackoff provides a default callback for Client.Backoff which
 // will perform exponential backoff based on the attempt number and limited
 // by the provided minimum and maximum durations.
-func DefaultBackoffPolicy(min, max time.Duration, attemptNum int) time.Duration {
+func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
 	mult := math.Pow(2, float64(attemptNum)) * float64(min)
 	sleep := time.Duration(mult)
 	if float64(sleep) != mult || sleep > max {
@@ -232,7 +232,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if remain == 0 {
 			break
 		}
-		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i)
+		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
 		desc := fmt.Sprintf("%s %s", req.Method, req.URL)
 		if code > 0 {
 			desc = fmt.Sprintf("%s (status: %d)", desc, code)
