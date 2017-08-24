@@ -524,8 +524,37 @@ func TestBackoff(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		if v := backoff(tc.min, tc.max, tc.i); v != tc.expect {
+		if v := DefaultBackoff(tc.min, tc.max, tc.i, nil); v != tc.expect {
 			t.Fatalf("bad: %#v -> %s", tc, v)
 		}
+	}
+}
+
+func TestClient_BackoffCustom(t *testing.T) {
+	var retries int32
+
+	client := NewClient()
+	client.Backoff = func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+		atomic.AddInt32(&retries, 1)
+		return time.Millisecond * 1
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.LoadInt32(&retries) == int32(client.RetryMax) {
+			w.WriteHeader(200)
+			return
+		}
+		w.WriteHeader(500)
+	}))
+	defer ts.Close()
+
+	// Make the request.
+	resp, err := client.Get(ts.URL + "/foo/bar")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	resp.Body.Close()
+	if retries != int32(client.RetryMax) {
+		t.Fatalf("expected retries: %d != %d", client.RetryMax, retries)
 	}
 }
