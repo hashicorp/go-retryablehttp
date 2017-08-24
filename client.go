@@ -151,11 +151,23 @@ func NewClient() *Client {
 	}
 }
 
+// net.Error and url.Error have a Temporary() bool that tells us if their
+// errors are retryable, rather than typecheck for the specific error
+// classes, we just use that same interface
+type temporary interface {
+	Temporary() bool
+}
+
 // DefaultRetryPolicy provides a default callback for Client.CheckRetry, which
 // will retry on connection errors and server errors.
 func DefaultRetryPolicy(resp *http.Response, err error) (bool, error) {
 	if err != nil {
-		return true, err
+		retryable := true
+		switch t := err.(type) {
+		case temporary:
+			retryable = t.Temporary()
+		}
+		return retryable, err
 	}
 	// Check the response code. We retry on 500-range responses to allow
 	// the server time to recover, as 500's are typically not permanent
