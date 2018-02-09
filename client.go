@@ -136,6 +136,9 @@ type Client struct {
 
 	// Backoff specifies the policy for how long to wait between retries
 	Backoff Backoff
+
+	// Headers will be used to reqeust.Header
+	Headers map[string]string
 }
 
 // NewClient creates a new Client with default settings.
@@ -148,6 +151,7 @@ func NewClient() *Client {
 		RetryMax:     defaultRetryMax,
 		CheckRetry:   DefaultRetryPolicy,
 		Backoff:      DefaultBackoff,
+		Headers:       make(map[string]string),
 	}
 }
 
@@ -180,9 +184,21 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 	return sleep
 }
 
+// SetHeader is used for setting header fields.
+// Example. To set `Accept` as `application/json`
+//
+//    client.SetHeader("Accept", "application/json").
+func (c *Client) SetHeader(key string, value string) {
+	c.Headers[key] = value
+}
+
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
 	c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
+
+	for k, v := range c.Headers {
+		req.Header.Set(k, v)
+	}
 
 	for i := 0; ; i++ {
 		var code int // HTTP response code
