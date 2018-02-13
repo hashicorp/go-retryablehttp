@@ -50,6 +50,12 @@ type LenReader interface {
 	Len() int
 }
 
+// DefaultClient allows you to set the client so your code can
+// call retryablehttp.Post and friends with your settings.
+func DefaultClient(c *Client) {
+	defaultClient = c
+}
+
 // Request wraps the metadata needed to create HTTP requests.
 type Request struct {
 	// body is a seekable reader over the request body payload. This is
