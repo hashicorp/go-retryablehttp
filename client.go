@@ -151,7 +151,7 @@ func NewClient() *Client {
 		RetryMax:     defaultRetryMax,
 		CheckRetry:   DefaultRetryPolicy,
 		Backoff:      DefaultBackoff,
-		Headers:       make(map[string]string),
+		Headers:      make(map[string]string),
 	}
 }
 
@@ -324,4 +324,19 @@ func PostForm(url string, data url.Values) (*http.Response, error) {
 // pre-filled url.Values form data.
 func (c *Client) PostForm(url string, data url.Values) (*http.Response, error) {
 	return c.Post(url, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+}
+
+// Patch is a shortcut for doing a PATCH request without making a new client.
+func Patch(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	return defaultClient.Patch(url, bodyType, body)
+}
+
+// Patch is a convenience method for doing simple PATCH requests.
+func (c *Client) Patch(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	req, err := NewRequest("PATCH", url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", bodyType)
+	return c.Do(req)
 }
