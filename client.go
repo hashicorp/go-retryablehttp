@@ -355,3 +355,18 @@ func (c *Client) Put(url, bodyType string, body io.ReadSeeker) (*http.Response, 
 	req.Header.Set("Content-Type", bodyType)
 	return c.Do(req)
 }
+
+// Delete is a shortcut for doing a DELETE request without making a new client.
+func Delete(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	return defaultClient.Delete(url, bodyType, body)
+}
+
+// Delete is a convenience method for doing simple DELETE requests.
+func (c *Client) Delete(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	req, err := NewRequest("DELETE", url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", bodyType)
+	return c.Do(req)
+}
