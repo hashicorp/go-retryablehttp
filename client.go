@@ -340,3 +340,18 @@ func (c *Client) Patch(url, bodyType string, body io.ReadSeeker) (*http.Response
 	req.Header.Set("Content-Type", bodyType)
 	return c.Do(req)
 }
+
+// Put is a shortcut for doing a PUT request without making a new client.
+func Put(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	return defaultClient.Put(url, bodyType, body)
+}
+
+// Put is a convenience method for doing simple PUT requests.
+func (c *Client) Put(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	req, err := NewRequest("PUT", url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", bodyType)
+	return c.Do(req)
+}
