@@ -23,6 +23,7 @@ package retryablehttp
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -71,6 +72,11 @@ type Request struct {
 	// Embed an HTTP request directly. This makes a *Request act exactly
 	// like an *http.Request so that all meta methods are supported.
 	*http.Request
+}
+
+func (r *Request) WithContext(ctx context.Context) *Request {
+	r.Request = r.Request.WithContext(ctx)
+	return r
 }
 
 // NewRequest creates a new wrapped request.
@@ -360,8 +366,13 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			code = resp.StatusCode
 		}
 
-		// Check if we should continue with retries.
-		checkOK, checkErr := c.CheckRetry(resp, err)
+		var checkOK bool
+		var checkErr error
+		// CheckRetry if only there is no context error
+		if req.Request.Context().Err() == nil {
+			// Check if we should continue with retries.
+			checkOK, checkErr = c.CheckRetry(resp, err)
+		}
 
 		if err != nil {
 			if c.Logger != nil {
