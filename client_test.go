@@ -2,6 +2,7 @@ package retryablehttp
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io/ioutil"
 	"log"
@@ -317,6 +318,40 @@ func TestClient_ResponseLogHook(t *testing.T) {
 	}
 	if !strings.Contains(out, "test_500_body") {
 		t.Fatalf("expect response callback on 500: %q", out)
+	}
+}
+
+func TestClient_RequestWithContext(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte("test_200_body"))
+	}))
+	defer ts.Close()
+
+	req, err := NewRequest(http.MethodGet, ts.URL, nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	ctx, cancel := context.WithCancel(req.Context())
+	req = req.WithContext(ctx)
+
+	client := NewClient()
+
+	called := 0
+	client.CheckRetry = func(resp *http.Response, err error) (bool, error) {
+		called++
+		return DefaultRetryPolicy(resp, err)
+	}
+
+	cancel()
+	_, err = client.Do(req)
+
+	if called != 1 {
+		t.Fatalf("CheckRetry called %d times, expected 1", called)
+	}
+
+	if !strings.Contains(err.Error(), "context") {
+		t.Fatalf("Expected context err, got:%v", err)
 	}
 }
 

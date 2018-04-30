@@ -57,7 +57,7 @@ type Request = http.Request
 
 // NewRequest creates a new HTTP request. It returns http.NewRequest and
 // exists only for backwards compatibility.
-func NewRequest(method, url string, body io.ReadSeeker) (*Request, error) {
+func NewRequest(method, url string, body io.Reader) (*Request, error) {
 	return http.NewRequest(method, url, body)
 }
 
@@ -208,6 +208,14 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		// Check if we should continue with retries.
 		checkOK, checkErr := c.CheckRetry(resp, err)
 
+		// Never retry on context cancellation. Unfortunately this check cannot
+		// go in CheckRetry because certain connection refused errors return
+		// context.Cancelled, but the thing being cancelled is not the request.
+		if err := req.Context().Err(); err != nil {
+			checkErr = err
+			checkOK = false
+		}
+
 		if err != nil {
 			c.Logger.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
 		} else {
@@ -288,13 +296,13 @@ func (c *Client) Head(url string) (*http.Response, error) {
 }
 
 // Post is a shortcut for doing a POST request without making a new client.
-func Post(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+func Post(url, bodyType string, body io.Reader) (*http.Response, error) {
 	return defaultClient.Post(url, bodyType, body)
 }
 
 // Post is a convenience method for doing simple POST requests.
-func (c *Client) Post(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
-	req, err := NewRequest("POST", url, body)
+func (c *Client) Post(url, bodyType string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest("POST", url, body)
 	if err != nil {
 		return nil, err
 	}
