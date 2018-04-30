@@ -15,6 +15,7 @@
 package retryablehttp
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -50,38 +51,14 @@ type LenReader interface {
 	Len() int
 }
 
-// Request wraps the metadata needed to create HTTP requests.
-type Request struct {
-	// body is a seekable reader over the request body payload. This is
-	// used to rewind the request data in between retries.
-	body io.ReadSeeker
+// Request is a type alias for http.Request for backwards compatibility with
+// previous versions of this library.
+type Request = http.Request
 
-	// Embed an HTTP request directly. This makes a *Request act exactly
-	// like an *http.Request so that all meta methods are supported.
-	*http.Request
-}
-
-// NewRequest creates a new wrapped request.
+// NewRequest creates a new HTTP request. It returns http.NewRequest and
+// exists only for backwards compatibility.
 func NewRequest(method, url string, body io.ReadSeeker) (*Request, error) {
-	// Wrap the body in a noop ReadCloser if non-nil. This prevents the
-	// reader from being closed by the HTTP client.
-	var rcBody io.ReadCloser
-	if body != nil {
-		rcBody = ioutil.NopCloser(body)
-	}
-
-	// Make the request with the noop-closer for the body.
-	httpReq, err := http.NewRequest(method, url, rcBody)
-	if err != nil {
-		return nil, err
-	}
-
-	// Check if we can set the Content-Length automatically.
-	if lr, ok := body.(LenReader); ok {
-		httpReq.ContentLength = int64(lr.Len())
-	}
-
-	return &Request{body, httpReq}, nil
+	return http.NewRequest(method, url, body)
 }
 
 // RequestLogHook allows a function to run before each retry. The HTTP
@@ -180,26 +157,53 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 	return sleep
 }
 
+// nopCloser is like ioutil.NopCloser except it preserves Seek
+type nopCloser struct {
+	io.ReadSeeker
+}
+
+func (nopCloser) Close() error { return nil }
+
+func (c nopCloser) Seek(offset int64, whence int) (int64, error) {
+	return c.ReadSeeker.Seek(offset, whence)
+}
+
 // Do wraps calling an HTTP method with retries.
-func (c *Client) Do(req *Request) (*http.Response, error) {
+func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
+
+	if req.Body != nil {
+		// if body is not rewindable then read it to a buffer that is rewindable
+		if readSeeker, ok := req.Body.(io.ReadSeeker); ok {
+			// always override any underlying Close function on req.Body so that
+			// net/http does not close it after the first try
+			req.Body = nopCloser{readSeeker}
+		} else {
+			buf, err := ioutil.ReadAll(req.Body)
+			if err != nil {
+				return nil, err
+			}
+			req.Body = nopCloser{bytes.NewReader(buf)}
+		}
+	}
 
 	for i := 0; ; i++ {
 		var code int // HTTP response code
 
 		// Always rewind the request body when non-nil.
-		if req.body != nil {
-			if _, err := req.body.Seek(0, 0); err != nil {
+		if req.Body != nil {
+			// this type cast will always succeed due to the steps above
+			if _, err := req.Body.(io.Seeker).Seek(0, 0); err != nil {
 				return nil, fmt.Errorf("failed to seek body: %v", err)
 			}
 		}
 
 		if c.RequestLogHook != nil {
-			c.RequestLogHook(c.Logger, req.Request, i)
+			c.RequestLogHook(c.Logger, req, i)
 		}
 
 		// Attempt the request
-		resp, err := c.HTTPClient.Do(req.Request)
+		resp, err := c.HTTPClient.Do(req)
 
 		// Check if we should continue with retries.
 		checkOK, checkErr := c.CheckRetry(resp, err)
