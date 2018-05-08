@@ -136,6 +136,9 @@ type Client struct {
 
 	// Backoff specifies the policy for how long to wait between retries
 	Backoff Backoff
+
+	// Headers will be used to reqeust.Header
+	Headers map[string]string
 }
 
 // NewClient creates a new Client with default settings.
@@ -148,6 +151,7 @@ func NewClient() *Client {
 		RetryMax:     defaultRetryMax,
 		CheckRetry:   DefaultRetryPolicy,
 		Backoff:      DefaultBackoff,
+		Headers:      make(map[string]string),
 	}
 }
 
@@ -180,9 +184,21 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 	return sleep
 }
 
+// SetHeader is used for setting header fields.
+// Example. To set `Accept` as `application/json`
+//
+//    client.SetHeader("Accept", "application/json").
+func (c *Client) SetHeader(key string, value string) {
+	c.Headers[key] = value
+}
+
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
 	c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
+
+	for k, v := range c.Headers {
+		req.Header.Set(k, v)
+	}
 
 	for i := 0; ; i++ {
 		var code int // HTTP response code
@@ -311,4 +327,49 @@ func PostForm(url string, data url.Values) (*http.Response, error) {
 // pre-filled url.Values form data.
 func (c *Client) PostForm(url string, data url.Values) (*http.Response, error) {
 	return c.Post(url, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+}
+
+// Patch is a shortcut for doing a PATCH request without making a new client.
+func Patch(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	return defaultClient.Patch(url, bodyType, body)
+}
+
+// Patch is a convenience method for doing simple PATCH requests.
+func (c *Client) Patch(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	req, err := NewRequest("PATCH", url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", bodyType)
+	return c.Do(req)
+}
+
+// Put is a shortcut for doing a PUT request without making a new client.
+func Put(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	return defaultClient.Put(url, bodyType, body)
+}
+
+// Put is a convenience method for doing simple PUT requests.
+func (c *Client) Put(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	req, err := NewRequest("PUT", url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", bodyType)
+	return c.Do(req)
+}
+
+// Delete is a shortcut for doing a DELETE request without making a new client.
+func Delete(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	return defaultClient.Delete(url, bodyType, body)
+}
+
+// Delete is a convenience method for doing simple DELETE requests.
+func (c *Client) Delete(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+	req, err := NewRequest("DELETE", url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", bodyType)
+	return c.Do(req)
 }
