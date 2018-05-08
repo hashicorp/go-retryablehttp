@@ -200,6 +200,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		// Attempt the request
 		resp, err := c.HTTPClient.Do(req.Request)
+		if resp != nil {
+			code = resp.StatusCode
+		}
 
 		// Check if we should continue with retries.
 		checkOK, checkErr := c.CheckRetry(resp, err)
