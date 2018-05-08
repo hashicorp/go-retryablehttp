@@ -150,7 +150,15 @@ func NewClient() *Client {
 		Backoff:      DefaultBackoff,
 	}
 }
-
+// NewPooledClient creates a new PooledClient with default settings, but with a shared Transport.
+// Do not use this function for
+// transient clients as it can leak file descriptors over time. Only use this
+// for clients that will be re-used for the same host(s).
+func NewPooledClient() *Client {
+	pooledclient := NewClient()
+	pooledclient.HTTPClient = cleanhttp.DefaultPooledClient()
+	return pooledclient
+}
 // DefaultRetryPolicy provides a default callback for Client.CheckRetry, which
 // will retry on connection errors and server errors.
 func DefaultRetryPolicy(resp *http.Response, err error) (bool, error) {
