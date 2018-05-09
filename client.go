@@ -191,9 +191,9 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 }
 
 // LinearJitterBackoff provides a callback for Client.Backoff which will
-// perform linear backoff based on the attempt number and limited by the
-// provided minimum and maximum, which are applied *prior to linear
-// adjustment*. Jitter will be applied to prevent a thundering herd.
+// perform linear backoff based on the attempt number and with jitter to
+// prevent a thundering herd. The final backoff time is the attempt number
+// multiplied by the random chosen value between min/max.
 func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
 	if max <= min {
 		// Unclear what to do here, so return min
