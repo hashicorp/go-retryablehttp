@@ -114,9 +114,9 @@ type CheckRetry func(resp *http.Response, err error) (bool, error)
 type Backoff func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration
 
 // ErrorHandler is called if retries are expired, containing the last status
-// from the http library. The default will close the body and return an error
-// indicating how many tries were attempted. If overriding this, be sure to
-// close the body if needed.
+// from the http library. If not specified, default behavior for the library is
+// to close the body and return an error indicating how many tries were
+// attempted. If overriding this, be sure to close the body if needed.
 type ErrorHandler func(resp *http.Response, err error, numTries int) (*http.Response, error)
 
 // Client is used to make HTTP requests. It adds additional functionality
@@ -205,6 +205,13 @@ func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Resp
 	// multiply by the attemptNum. attemptNum starts at zero so we always
 	// increment here.
 	return time.Duration((int64(rand.Int63()) % int64(max-min)) * int64((attemptNum + 1)))
+}
+
+// PassthroughErrorHandler is an ErrorHandler that directly passes through the
+// values from the net/http library for the final request. The body is not
+// closed.
+func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Response, error) {
+	return resp, err
 }
 
 // Do wraps calling an HTTP method with retries.
