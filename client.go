@@ -182,7 +182,9 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
-	c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
+	if c.Logger != nil {
+		c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
+	}
 
 	for i := 0; ; i++ {
 		var code int // HTTP response code
@@ -208,7 +210,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		checkOK, checkErr := c.CheckRetry(resp, err)
 
 		if err != nil {
-			c.Logger.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
+			if c.Logger != nil {
+				c.Logger.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
+			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
 			// even if CheckRetry signals to stop.
@@ -240,7 +244,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if code > 0 {
 			desc = fmt.Sprintf("%s (status: %d)", desc, code)
 		}
-		c.Logger.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
+		if c.Logger != nil {
+			c.Logger.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
+		}
 		time.Sleep(wait)
 	}
 
@@ -254,7 +260,9 @@ func (c *Client) drainBody(body io.ReadCloser) {
 	defer body.Close()
 	_, err := io.Copy(ioutil.Discard, io.LimitReader(body, respReadLimit))
 	if err != nil {
-		c.Logger.Printf("[ERR] error reading response body: %v", err)
+		if c.Logger != nil {
+			c.Logger.Printf("[ERR] error reading response body: %v", err)
+		}
 	}
 }
 
