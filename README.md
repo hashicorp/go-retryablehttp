@@ -22,6 +22,15 @@ The main difference from `net/http` is that requests which take a request body
 request body to be "rewound" if the initial request fails so that the full
 request can be attempted again.
 
+In order to try the same request multiple times, `retryablehttp` may need to
+read the request body multiple times. If the body passed to `Client.Do`
+implements [io.Seeker](`https://golang.org/pkg/io/#Seeker`), then this is
+achieved by rewinding the reader via a call to `Seek(0, 0)` on each retry. If
+the body does not implement `io.Seeker` then its contents will be read to an
+internal buffer just once, before the first attempt. Note that `io.Seeker` is
+implemented by `bytes.Buffer`, `bytes.Reader`, `strings.Reader`, `os.File`, and
+many other common sources for request bodies.
+
 Example Use
 ===========
 

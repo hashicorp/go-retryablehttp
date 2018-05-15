@@ -593,3 +593,59 @@ func TestClient_BackoffCustom(t *testing.T) {
 		t.Fatalf("expected retries: %d != %d", client.RetryMax, retries)
 	}
 }
+
+// mockReader for recording calls to Close and Seek
+type mockReader struct {
+	r         *strings.Reader
+	numSeeks  int
+	numCloses int
+}
+
+func (r *mockReader) Read(b []byte) (int, error) {
+	return r.r.Read(b)
+}
+
+func (r *mockReader) Close() error {
+	r.numCloses++
+	return nil
+}
+
+func (r *mockReader) Seek(offset int64, whence int) (int64, error) {
+	r.numSeeks++
+	return r.r.Seek(offset, whence)
+}
+
+func TestClient_Body(t *testing.T) {
+	var retries int32
+
+	client := NewClient()
+	client.RetryMax = 2
+	client.Backoff = func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+		atomic.AddInt32(&retries, 1)
+		return time.Millisecond
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.LoadInt32(&retries) == int32(client.RetryMax) {
+			w.WriteHeader(200)
+			return
+		}
+		w.WriteHeader(500)
+	}))
+	defer ts.Close()
+
+	body := mockReader{r: strings.NewReader("test")}
+	_, err := client.Post(ts.URL, "application/text", &body)
+
+	if err != nil {
+		t.Fatalf("Expected no error, got:%v", err)
+	}
+
+	if body.numCloses != 1 {
+		t.Fatalf("Expected one call to close, got %d", body.numCloses)
+	}
+
+	if body.numSeeks != 2 {
+		t.Fatalf("Expected two calls to seek, got %d", body.numSeeks)
+	}
+}

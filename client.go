@@ -173,6 +173,11 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
 
 	if req.Body != nil {
+		// below we will prevent net/http from closing the request body after
+		// the first try, which means we must take responsibility for closing it
+		// after we are done retrying
+		defer req.Body.Close()
+
 		// if body is not rewindable then read it to a buffer that is rewindable
 		if readSeeker, ok := req.Body.(io.ReadSeeker); ok {
 			// always override any underlying Close function on req.Body so that
@@ -191,7 +196,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		var code int // HTTP response code
 
 		// Always rewind the request body when non-nil.
-		if req.Body != nil {
+		if req.Body != nil && i > 0 {
 			// this type cast will always succeed due to the steps above
 			if _, err := req.Body.(io.Seeker).Seek(0, 0); err != nil {
 				return nil, fmt.Errorf("failed to seek body: %v", err)
