@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -89,6 +90,12 @@ type CheckRetry func(resp *http.Response, err error) (bool, error)
 // that should pass before trying again.
 type Backoff func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration
 
+// ErrorHandler is called if retries are expired, containing the last status
+// from the http library. If not specified, default behavior for the library is
+// to close the body and return an error indicating how many tries were
+// attempted. If overriding this, be sure to close the body if needed.
+type ErrorHandler func(resp *http.Response, err error, numTries int) (*http.Response, error)
+
 // Client is used to make HTTP requests. It adds additional functionality
 // like automatic retries to tolerate minor outages.
 type Client struct {
@@ -113,6 +120,9 @@ type Client struct {
 
 	// Backoff specifies the policy for how long to wait between retries
 	Backoff Backoff
+
+	// ErrorHandler specifies the custom error handler to use, if any
+	ErrorHandler ErrorHandler
 }
 
 // NewClient creates a new Client with default settings.
@@ -157,6 +167,48 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 	return sleep
 }
 
+// LinearJitterBackoff provides a callback for Client.Backoff which will
+// perform linear backoff based on the attempt number and with jitter to
+// prevent a thundering herd.
+//
+// min and max here are *not* absolute values. The number to be multipled by
+// the attempt number will be chosen at random from between them, thus they are
+// bounding the jitter.
+//
+// For instance:
+// * To get strictly linear backoff of one second increasing each retry, set
+// both to one second (1s, 2s, 3s, 4s, ...)
+// * To get a small amount of jitter centered around one second increasing each
+// retry, set to around one second, such as a min of 800ms and max of 1200ms
+// (892ms, 2102ms, 2945ms, 4312ms, ...)
+// * To get extreme jitter, set to a very wide spread, such as a min of 100ms
+// and a max of 20s (15382ms, 292ms, 51321ms, 35234ms, ...)
+func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+	// attemptNum always starts at zero but we want to start at 1 for multiplication
+	attemptNum++
+
+	if max <= min {
+		// Unclear what to do here, or they are the same, so return min *
+		// attemptNum
+		return min * time.Duration(attemptNum)
+	}
+
+	// Seed rand; doing this every time is fine
+	rand := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
+
+	// Pick a random number that lies somewhere between the min and max and
+	// multiply by the attemptNum. attemptNum starts at zero so we always
+	// increment here.
+	return time.Duration((rand.Int63() % int64(max-min)) * int64(attemptNum))
+}
+
+// PassthroughErrorHandler is an ErrorHandler that directly passes through the
+// values from the net/http library for the final request. The body is not
+// closed.
+func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Response, error) {
+	return resp, err
+}
+
 // nopCloser is like ioutil.NopCloser except it preserves Seek
 type nopCloser struct {
 	io.ReadSeeker
@@ -170,7 +222,12 @@ func (c nopCloser) Seek(offset int64, whence int) (int64, error) {
 
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
+	if c.Logger != nil {
+		c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
+	}
+
+	var resp *http.Response
+	var err error
 
 	if req.Body != nil {
 		// below we will prevent net/http from closing the request body after
@@ -208,7 +265,10 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		}
 
 		// Attempt the request
-		resp, err := c.HTTPClient.Do(req)
+		resp, err = c.HTTPClient.Do(req)
+		if resp != nil {
+			code = resp.StatusCode
+		}
 
 		// Check if we should continue with retries.
 		checkOK, checkErr := c.CheckRetry(resp, err)
@@ -222,7 +282,9 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		}
 
 		if err != nil {
-			c.Logger.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
+			if c.Logger != nil {
+				c.Logger.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
+			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
 			// even if CheckRetry signals to stop.
@@ -240,25 +302,38 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 			return resp, err
 		}
 
-		// We're going to retry, consume any response to reuse the connection.
-		if err == nil {
-			c.drainBody(resp.Body)
-		}
-
+		// We do this before drainBody beause there's no need for the I/O if
+		// we're breaking out
 		remain := c.RetryMax - i
 		if remain == 0 {
 			break
 		}
+
+		// We're going to retry, consume any response to reuse the connection.
+		if err == nil && resp != nil {
+			c.drainBody(resp.Body)
+		}
+
 		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
 		desc := fmt.Sprintf("%s %s", req.Method, req.URL)
 		if code > 0 {
 			desc = fmt.Sprintf("%s (status: %d)", desc, code)
 		}
-		c.Logger.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
+		if c.Logger != nil {
+			c.Logger.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
+		}
 		time.Sleep(wait)
 	}
 
-	// Return an error if we fall out of the retry loop
+	if c.ErrorHandler != nil {
+		return c.ErrorHandler(resp, err, c.RetryMax+1)
+	}
+
+	// By default, we close the response body and return an error without
+	// returning the response
+	if resp != nil {
+		resp.Body.Close()
+	}
 	return nil, fmt.Errorf("%s %s giving up after %d attempts",
 		req.Method, req.URL, c.RetryMax+1)
 }
@@ -268,7 +343,9 @@ func (c *Client) drainBody(body io.ReadCloser) {
 	defer body.Close()
 	_, err := io.Copy(ioutil.Discard, io.LimitReader(body, respReadLimit))
 	if err != nil {
-		c.Logger.Printf("[ERR] error reading response body: %v", err)
+		if c.Logger != nil {
+			c.Logger.Printf("[ERR] error reading response body: %v", err)
+		}
 	}
 }
 
