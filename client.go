@@ -8,13 +8,16 @@
 // response is received, then a retry is invoked. Otherwise, the response is
 // returned and left to the caller to interpret.
 //
-// The main difference from net/http is that requests which take a request body
-// (POST/PUT et. al) require an io.ReadSeeker to be provided. This enables the
-// request body to be "rewound" if the initial request fails so that the full
-// request can be attempted again.
+// Requests which take a request body should provide a non-nil function
+// parameter. The best choice is to provide a raw byte slice. As it is a
+// reference type, and we will wrap it as needed by readers, we can efficiently
+// re-use the request body without needing to copy it. If anything satisfying
+// io.Reader is provided, we will use that but copy the bytes initially to a
+// local slice.
 package retryablehttp
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -55,7 +58,7 @@ type LenReader interface {
 type Request struct {
 	// body is a seekable reader over the request body payload. This is
 	// used to rewind the request data in between retries.
-	body io.ReadSeeker
+	body func() io.Reader
 
 	// Embed an HTTP request directly. This makes a *Request act exactly
 	// like an *http.Request so that all meta methods are supported.
@@ -63,24 +66,71 @@ type Request struct {
 }
 
 // NewRequest creates a new wrapped request.
-func NewRequest(method, url string, body io.ReadSeeker) (*Request, error) {
-	// Wrap the body in a noop ReadCloser if non-nil. This prevents the
-	// reader from being closed by the HTTP client.
-	var rcBody io.ReadCloser
-	if body != nil {
-		rcBody = ioutil.NopCloser(body)
+func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
+	var err error
+	var body func() io.Reader
+	var contentLength int64
+
+	if rawBody != nil {
+		switch rawBody.(type) {
+		// If they gave us a function already, great! Use it.
+		case func() io.Reader:
+			body = rawBody.(func() io.Reader)
+			if lr, ok := body().(LenReader); ok {
+				contentLength = int64(lr.Len())
+			}
+
+		// If a regular byte slice, we can read it over and over via new
+		// readers
+		case []byte:
+			buf := rawBody.([]byte)
+			body = func() io.Reader {
+				return bytes.NewReader(buf)
+			}
+			contentLength = int64(len(buf))
+
+		// If a bytes.Buffer we can read the underlying byte slice over and
+		// over
+		case *bytes.Buffer:
+			buf := rawBody.(*bytes.Buffer)
+			body = func() io.Reader {
+				return bytes.NewReader(buf.Bytes())
+			}
+			contentLength = int64(buf.Len())
+
+		// We prioritize *bytes.Reader here because we don't really want to
+		// deal with it seeking so want it to match here instead of the
+		// io.ReadSeeker case.
+		case *bytes.Reader:
+			buf, err := ioutil.ReadAll(rawBody.(*bytes.Reader))
+			if err != nil {
+				return nil, err
+			}
+			body = func() io.Reader {
+				return bytes.NewReader(buf)
+			}
+			contentLength = int64(len(buf))
+
+		case io.ReadSeeker:
+			raw := rawBody.(io.ReadSeeker)
+			body = func() io.Reader {
+				raw.Seek(0, 0)
+				return raw
+			}
+			if lr, ok := raw.(LenReader); ok {
+				contentLength = int64(lr.Len())
+			}
+
+		default:
+			return nil, fmt.Errorf("cannot handle type %T", rawBody)
+		}
 	}
 
-	// Make the request with the noop-closer for the body.
-	httpReq, err := http.NewRequest(method, url, rcBody)
+	httpReq, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	// Check if we can set the Content-Length automatically.
-	if lr, ok := body.(LenReader); ok {
-		httpReq.ContentLength = int64(lr.Len())
-	}
+	httpReq.ContentLength = contentLength
 
 	return &Request{body, httpReq}, nil
 }
@@ -249,9 +299,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		// Always rewind the request body when non-nil.
 		if req.body != nil {
-			if _, err := req.body.Seek(0, 0); err != nil {
-				return nil, fmt.Errorf("failed to seek body: %v", err)
-			}
+			req.Request.Body = ioutil.NopCloser(req.body())
 		}
 
 		if c.RequestLogHook != nil {
@@ -364,12 +412,12 @@ func (c *Client) Head(url string) (*http.Response, error) {
 }
 
 // Post is a shortcut for doing a POST request without making a new client.
-func Post(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+func Post(url, bodyType string, body interface{}) (*http.Response, error) {
 	return defaultClient.Post(url, bodyType, body)
 }
 
 // Post is a convenience method for doing simple POST requests.
-func (c *Client) Post(url, bodyType string, body io.ReadSeeker) (*http.Response, error) {
+func (c *Client) Post(url, bodyType string, body interface{}) (*http.Response, error) {
 	req, err := NewRequest("POST", url, body)
 	if err != nil {
 		return nil, err
