@@ -111,6 +111,7 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 			}
 			contentLength = int64(len(buf))
 
+		// Compat case
 		case io.ReadSeeker:
 			raw := rawBody.(io.ReadSeeker)
 			body = func() io.Reader {
@@ -120,6 +121,17 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 			if lr, ok := raw.(LenReader); ok {
 				contentLength = int64(lr.Len())
 			}
+
+		// Read all in so we can reset
+		case io.Reader:
+			buf, err := ioutil.ReadAll(rawBody.(io.Reader))
+			if err != nil {
+				return nil, err
+			}
+			body = func() io.Reader {
+				return bytes.NewReader(buf)
+			}
+			contentLength = int64(len(buf))
 
 		default:
 			return nil, fmt.Errorf("cannot handle type %T", rawBody)
