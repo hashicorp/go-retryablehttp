@@ -291,7 +291,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		// We do this before drainBody beause there's no need for the I/O if
 		// we're breaking out
 		remain := c.RetryMax - i
-		if remain == 0 {
+		if remain <= 0 {
 			break
 		}
 
