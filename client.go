@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/go-cleanhttp"
@@ -51,6 +52,23 @@ type LenReader interface {
 	Len() int
 }
 
+type lockedReadSeeker struct {
+	l *sync.RWMutex
+	io.ReadSeeker
+}
+
+func (r *lockedReadSeeker) Read(p []byte) (n int, err error) {
+	r.l.RLock()
+	defer r.l.RUnlock()
+	return r.ReadSeeker.Read(p)
+}
+
+func (r *lockedReadSeeker) Seek(offset int64, whence int) (int64, error) {
+	r.l.Lock()
+	defer r.l.Unlock()
+	return r.ReadSeeker.Seek(offset, whence)
+}
+
 // Request wraps the metadata needed to create HTTP requests.
 type Request struct {
 	// body is a seekable reader over the request body payload. This is
@@ -64,6 +82,19 @@ type Request struct {
 
 // NewRequest creates a new wrapped request.
 func NewRequest(method, url string, body io.ReadSeeker) (*Request, error) {
+	// Wrap the body in a lockedReadSeeker. We have seen situations where a
+	// data race is found with the write at the seek call, and it is likely
+	// because the seek call can occur after a read call in a net/http
+	// goroutine leading to the race detector deciding there is a data race
+	// even though they should not be concurrent.
+	origBody := body
+	if body != nil {
+		body = &lockedReadSeeker{
+			l:          new(sync.RWMutex),
+			ReadSeeker: body,
+		}
+	}
+
 	// Wrap the body in a noop ReadCloser if non-nil. This prevents the
 	// reader from being closed by the HTTP client.
 	var rcBody io.ReadCloser
@@ -78,7 +109,7 @@ func NewRequest(method, url string, body io.ReadSeeker) (*Request, error) {
 	}
 
 	// Check if we can set the Content-Length automatically.
-	if lr, ok := body.(LenReader); ok {
+	if lr, ok := origBody.(LenReader); ok {
 		httpReq.ContentLength = int64(lr.Len())
 	}
 
