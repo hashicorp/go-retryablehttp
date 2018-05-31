@@ -58,7 +58,7 @@ type LenReader interface {
 type Request struct {
 	// body is a seekable reader over the request body payload. This is
 	// used to rewind the request data in between retries.
-	body func() io.Reader
+	body func() (io.Reader, error)
 
 	// Embed an HTTP request directly. This makes a *Request act exactly
 	// like an *http.Request so that all meta methods are supported.
@@ -68,24 +68,31 @@ type Request struct {
 // NewRequest creates a new wrapped request.
 func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 	var err error
-	var body func() io.Reader
+	var body func() (io.Reader, error)
 	var contentLength int64
 
 	if rawBody != nil {
 		switch rawBody.(type) {
 		// If they gave us a function already, great! Use it.
-		case func() io.Reader:
-			body = rawBody.(func() io.Reader)
-			if lr, ok := body().(LenReader); ok {
+		case func() (io.Reader, error):
+			body = rawBody.(func() (io.Reader, error))
+			tmp, err := body()
+			if err != nil {
+				return nil, err
+			}
+			if lr, ok := tmp.(LenReader); ok {
 				contentLength = int64(lr.Len())
+			}
+			if c, ok := tmp.(io.Closer); ok {
+				c.Close()
 			}
 
 		// If a regular byte slice, we can read it over and over via new
 		// readers
 		case []byte:
 			buf := rawBody.([]byte)
-			body = func() io.Reader {
-				return bytes.NewReader(buf)
+			body = func() (io.Reader, error) {
+				return bytes.NewReader(buf), nil
 			}
 			contentLength = int64(len(buf))
 
@@ -93,8 +100,8 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 		// over
 		case *bytes.Buffer:
 			buf := rawBody.(*bytes.Buffer)
-			body = func() io.Reader {
-				return bytes.NewReader(buf.Bytes())
+			body = func() (io.Reader, error) {
+				return bytes.NewReader(buf.Bytes()), nil
 			}
 			contentLength = int64(buf.Len())
 
@@ -106,17 +113,17 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 			if err != nil {
 				return nil, err
 			}
-			body = func() io.Reader {
-				return bytes.NewReader(buf)
+			body = func() (io.Reader, error) {
+				return bytes.NewReader(buf), nil
 			}
 			contentLength = int64(len(buf))
 
 		// Compat case
 		case io.ReadSeeker:
 			raw := rawBody.(io.ReadSeeker)
-			body = func() io.Reader {
+			body = func() (io.Reader, error) {
 				raw.Seek(0, 0)
-				return raw
+				return ioutil.NopCloser(raw), nil
 			}
 			if lr, ok := raw.(LenReader); ok {
 				contentLength = int64(lr.Len())
@@ -128,8 +135,8 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 			if err != nil {
 				return nil, err
 			}
-			body = func() io.Reader {
-				return bytes.NewReader(buf)
+			body = func() (io.Reader, error) {
+				return bytes.NewReader(buf), nil
 			}
 			contentLength = int64(len(buf))
 
@@ -311,7 +318,15 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		// Always rewind the request body when non-nil.
 		if req.body != nil {
-			req.Request.Body = ioutil.NopCloser(req.body())
+			body, err := req.body()
+			if err != nil {
+				return resp, err
+			}
+			if c, ok := body.(io.ReadCloser); ok {
+				req.Request.Body = c
+			} else {
+				req.Request.Body = ioutil.NopCloser(body)
+			}
 		}
 
 		if c.RequestLogHook != nil {
