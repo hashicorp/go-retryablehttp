@@ -3,6 +3,7 @@ package retryablehttp
 import (
 	"bytes"
 	"errors"
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -48,9 +49,52 @@ func TestRequest(t *testing.T) {
 	}
 }
 
+// Since normal ways we would generate a Reader have special cases, use a
+// custom type here
+type custReader struct {
+	val string
+	pos int
+}
+
+func (c *custReader) Read(p []byte) (n int, err error) {
+	if c.val == "" {
+		c.val = "hello"
+	}
+	if c.pos >= len(c.val) {
+		return 0, io.EOF
+	}
+	var i int
+	for i = 0; i < len(p) && i+c.pos < len(c.val); i++ {
+		p[i] = c.val[i+c.pos]
+	}
+	c.pos += i
+	return i, nil
+}
+
 func TestClient_Do(t *testing.T) {
+	testBytes := []byte("hello")
+	// Native func
+	testClient_Do(t, ReaderFunc(func() (io.Reader, error) {
+		return bytes.NewReader(testBytes), nil
+	}))
+	// Native func, different Go type
+	testClient_Do(t, func() (io.Reader, error) {
+		return bytes.NewReader(testBytes), nil
+	})
+	// []byte
+	testClient_Do(t, testBytes)
+	// *bytes.Buffer
+	testClient_Do(t, bytes.NewBuffer(testBytes))
+	// *bytes.Reader
+	testClient_Do(t, bytes.NewReader(testBytes))
+	// io.ReadSeeker
+	testClient_Do(t, strings.NewReader(string(testBytes)))
+	// io.Reader
+	testClient_Do(t, &custReader{})
+}
+
+func testClient_Do(t *testing.T, body interface{}) {
 	// Create a request
-	body := bytes.NewReader([]byte("hello"))
 	req, err := NewRequest("PUT", "http://127.0.0.1:28934/v1/foo", body)
 	if err != nil {
 		t.Fatalf("err: %v", err)
