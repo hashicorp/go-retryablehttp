@@ -74,6 +74,10 @@ func (c *custReader) Read(p []byte) (n int, err error) {
 func TestClient_Do(t *testing.T) {
 	testBytes := []byte("hello")
 	// Native func
+	testClient_Do(t, ReaderFunc(func() (io.Reader, error) {
+		return bytes.NewReader(testBytes), nil
+	}))
+	// Native func, different Go type
 	testClient_Do(t, func() (io.Reader, error) {
 		return bytes.NewReader(testBytes), nil
 	})

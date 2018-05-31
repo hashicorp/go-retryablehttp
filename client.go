@@ -9,11 +9,16 @@
 // returned and left to the caller to interpret.
 //
 // Requests which take a request body should provide a non-nil function
-// parameter. The best choice is to provide a raw byte slice. As it is a
-// reference type, and we will wrap it as needed by readers, we can efficiently
-// re-use the request body without needing to copy it. If anything satisfying
-// io.Reader is provided, we will use that but copy the bytes initially to a
-// local slice.
+// parameter. The best choice is to provide either a function satisfying
+// ReaderFunc which provides multiple io.Readers in an efficient manner, a
+// *bytes.Buffer (the underlying raw byte slice will be used) or a raw byte
+// slice. As it is a reference type, and we will wrap it as needed by readers,
+// we can efficiently re-use the request body without needing to copy it. If an
+// io.Reader (such as a *bytes.Reader) is provided, the full body will be read
+// prior to the first request, and will be efficiently re-used for any retries.
+// ReadSeeker can be used, but some users have observed occasional data races
+// between the net/http library and the Seek functionality of some
+// implementations of ReadSeeker, so should be avoided if possible.
 package retryablehttp
 
 import (
@@ -48,6 +53,9 @@ var (
 	respReadLimit = int64(4096)
 )
 
+// ReaderFunc is the type of function that can be given natively to NewRequest
+type ReaderFunc func() (io.Reader, error)
+
 // LenReader is an interface implemented by many in-memory io.Reader's. Used
 // for automatically sending the right Content-Length header when possible.
 type LenReader interface {
@@ -58,7 +66,7 @@ type LenReader interface {
 type Request struct {
 	// body is a seekable reader over the request body payload. This is
 	// used to rewind the request data in between retries.
-	body func() (io.Reader, error)
+	body ReaderFunc
 
 	// Embed an HTTP request directly. This makes a *Request act exactly
 	// like an *http.Request so that all meta methods are supported.
@@ -68,12 +76,25 @@ type Request struct {
 // NewRequest creates a new wrapped request.
 func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 	var err error
-	var body func() (io.Reader, error)
+	var body ReaderFunc
 	var contentLength int64
 
 	if rawBody != nil {
 		switch rawBody.(type) {
 		// If they gave us a function already, great! Use it.
+		case ReaderFunc:
+			body = rawBody.(ReaderFunc)
+			tmp, err := body()
+			if err != nil {
+				return nil, err
+			}
+			if lr, ok := tmp.(LenReader); ok {
+				contentLength = int64(lr.Len())
+			}
+			if c, ok := tmp.(io.Closer); ok {
+				c.Close()
+			}
+
 		case func() (io.Reader, error):
 			body = rawBody.(func() (io.Reader, error))
 			tmp, err := body()
