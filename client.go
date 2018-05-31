@@ -175,6 +175,15 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 	return &Request{body, httpReq}, nil
 }
 
+// RequestBody pulls an io.Reader from the request. This is useful if you need
+// to generate a standard http.Request from this package's Request.
+func (r *Request) RequestBody() (io.Reader, error) {
+	if r.body == nil {
+		return nil, nil
+	}
+	return r.body()
+}
+
 // RequestLogHook allows a function to run before each retry. The HTTP
 // request which will be made, and the retry number (0 for the initial
 // request) are available to users. The internal logger is exposed to
