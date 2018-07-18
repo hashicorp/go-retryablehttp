@@ -2,6 +2,7 @@ package retryablehttp
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -364,6 +365,40 @@ func TestClient_ResponseLogHook(t *testing.T) {
 	}
 }
 
+func TestClient_RequestWithContext(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte("test_200_body"))
+	}))
+	defer ts.Close()
+
+	req, err := NewRequest(http.MethodGet, ts.URL, nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	ctx, cancel := context.WithCancel(req.Request.Context())
+	req = req.WithContext(ctx)
+
+	client := NewClient()
+
+	called := 0
+	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
+		called++
+		return DefaultRetryPolicy(req.Request.Context(), resp, err)
+	}
+
+	cancel()
+	_, err = client.Do(req)
+
+	if called != 1 {
+		t.Fatalf("CheckRetry called %d times, expected 1", called)
+	}
+
+	if err != context.Canceled {
+		t.Fatalf("Expected context.Canceled err, got: %v", err)
+	}
+}
+
 func TestClient_CheckRetry(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "test_500_body", http.StatusInternalServerError)
@@ -374,10 +409,10 @@ func TestClient_CheckRetry(t *testing.T) {
 
 	retryErr := errors.New("retryError")
 	called := 0
-	client.CheckRetry = func(resp *http.Response, err error) (bool, error) {
+	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
 		if called < 1 {
 			called++
-			return DefaultRetryPolicy(resp, err)
+			return DefaultRetryPolicy(context.TODO(), resp, err)
 		}
 
 		return false, retryErr
@@ -405,7 +440,7 @@ func TestClient_CheckRetryStop(t *testing.T) {
 
 	// Verify that this stops retries on the first try, with no errors from the client.
 	called := 0
-	client.CheckRetry = func(resp *http.Response, err error) (bool, error) {
+	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
 		called++
 		return false, nil
 	}
