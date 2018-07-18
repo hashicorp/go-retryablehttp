@@ -382,20 +382,20 @@ func TestClient_RequestWithContext(t *testing.T) {
 	client := NewClient()
 
 	called := 0
-	client.CheckRetry = func(resp *http.Response, err error) (bool, error) {
+	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
 		called++
-		return DefaultRetryPolicy(resp, err)
+		return DefaultRetryPolicy(req.Request.Context(), resp, err)
 	}
 
 	cancel()
 	_, err = client.Do(req)
 
-	if called != 0 {
+	if called != 1 {
 		t.Fatalf("CheckRetry called %d times, expected 1", called)
 	}
 
-	if !strings.Contains(err.Error(), "context") {
-		t.Fatalf("Expected context err, got:%v", err)
+	if err != context.Canceled {
+		t.Fatalf("Expected context.Canceled err, got: %v", err)
 	}
 }
 
@@ -409,10 +409,10 @@ func TestClient_CheckRetry(t *testing.T) {
 
 	retryErr := errors.New("retryError")
 	called := 0
-	client.CheckRetry = func(resp *http.Response, err error) (bool, error) {
+	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
 		if called < 1 {
 			called++
-			return DefaultRetryPolicy(resp, err)
+			return DefaultRetryPolicy(context.TODO(), resp, err)
 		}
 
 		return false, retryErr
@@ -440,7 +440,7 @@ func TestClient_CheckRetryStop(t *testing.T) {
 
 	// Verify that this stops retries on the first try, with no errors from the client.
 	called := 0
-	client.CheckRetry = func(resp *http.Response, err error) (bool, error) {
+	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
 		called++
 		return false, nil
 	}

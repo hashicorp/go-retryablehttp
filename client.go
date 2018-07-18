@@ -204,7 +204,7 @@ type ResponseLogHook func(*log.Logger, *http.Response)
 // Client will close any response body when retrying, but if the retry is
 // aborted it is up to the CheckResponse callback to properly close any
 // response body before returning.
-type CheckRetry func(resp *http.Response, err error) (bool, error)
+type CheckRetry func(ctx context.Context, resp *http.Response, err error) (bool, error)
 
 // Backoff specifies a policy for how long to wait between retries.
 // It is called after a failing request to determine the amount of time
@@ -261,7 +261,12 @@ func NewClient() *Client {
 
 // DefaultRetryPolicy provides a default callback for Client.CheckRetry, which
 // will retry on connection errors and server errors.
-func DefaultRetryPolicy(resp *http.Response, err error) (bool, error) {
+func DefaultRetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	// do not retry on context.Canceled or context.DeadlineExceeded
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+
 	if err != nil {
 		return true, err
 	}
@@ -368,13 +373,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			code = resp.StatusCode
 		}
 
-		var checkOK bool
-		var checkErr error
-		// CheckRetry if only there is no context error
-		if req.Request.Context().Err() == nil {
-			// Check if we should continue with retries.
-			checkOK, checkErr = c.CheckRetry(resp, err)
-		}
+		// Check if we should continue with retries.
+		checkOK, checkErr := c.CheckRetry(req.Request.Context(), resp, err)
 
 		if err != nil {
 			if c.Logger != nil {
