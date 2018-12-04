@@ -29,14 +29,14 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/hashicorp/go-cleanhttp"
+	cleanhttp "github.com/hashicorp/go-cleanhttp"
+	"github.com/hashicorp/go-retryablehttp/saferand"
 )
 
 var (
@@ -48,9 +48,6 @@ var (
 	// defaultClient is used for performing requests without explicitly making
 	// a new client. It is purposely private to avoid modifications.
 	defaultClient = NewClient()
-
-	// random is used to generate pseudo-random numbers.
-	random = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	// We need to consume response bodies to maintain http connections, but
 	// limit the size we consume to respReadLimit.
@@ -332,7 +329,7 @@ func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Resp
 	// multiply by the attemptNum. attemptNum starts at zero so we always
 	// increment here. We first get a random percentage, then apply that to the
 	// difference between min and max, and add to min.
-	jitter := random.Float64() * float64(max-min)
+	jitter := saferand.Float64() * float64(max-min)
 	jitterMin := int64(jitter) + int64(min)
 	return time.Duration(jitterMin * int64(attemptNum))
 }
