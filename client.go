@@ -34,6 +34,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/go-cleanhttp"
@@ -49,12 +50,27 @@ var (
 	// a new client. It is purposely private to avoid modifications.
 	defaultClient = NewClient()
 
-	// random is used to generate pseudo-random numbers.
-	random = rand.New(rand.NewSource(time.Now().UnixNano()))
-
 	// We need to consume response bodies to maintain http connections, but
 	// limit the size we consume to respReadLimit.
 	respReadLimit = int64(4096)
+
+	// LinearJitterBackoff provides a callback for Client.Backoff which will
+	// perform linear backoff based on the attempt number and with jitter to
+	// prevent a thundering herd.
+	//
+	// min and max here are *not* absolute values. The number to be multipled by
+	// the attempt number will be chosen at random from between them, thus they are
+	// bounding the jitter.
+	//
+	// For instance:
+	// * To get strictly linear backoff of one second increasing each retry, set
+	// both to one second (1s, 2s, 3s, 4s, ...)
+	// * To get a small amount of jitter centered around one second increasing each
+	// retry, set to around one second, such as a min of 800ms and max of 1200ms
+	// (892ms, 2102ms, 2945ms, 4312ms, ...)
+	// * To get extreme jitter, set to a very wide spread, such as a min of 100ms
+	// and a max of 20s (15382ms, 292ms, 51321ms, 35234ms, ...)
+	LinearJitterBackoff = makeLinearJitterBackoff()
 )
 
 // ReaderFunc is the type of function that can be given natively to NewRequest
@@ -302,39 +318,35 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 	return sleep
 }
 
-// LinearJitterBackoff provides a callback for Client.Backoff which will
-// perform linear backoff based on the attempt number and with jitter to
-// prevent a thundering herd.
-//
-// min and max here are *not* absolute values. The number to be multipled by
-// the attempt number will be chosen at random from between them, thus they are
-// bounding the jitter.
-//
-// For instance:
-// * To get strictly linear backoff of one second increasing each retry, set
-// both to one second (1s, 2s, 3s, 4s, ...)
-// * To get a small amount of jitter centered around one second increasing each
-// retry, set to around one second, such as a min of 800ms and max of 1200ms
-// (892ms, 2102ms, 2945ms, 4312ms, ...)
-// * To get extreme jitter, set to a very wide spread, such as a min of 100ms
-// and a max of 20s (15382ms, 292ms, 51321ms, 35234ms, ...)
-func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
-	// attemptNum always starts at zero but we want to start at 1 for multiplication
-	attemptNum++
+func makeLinearJitterBackoff() Backoff {
+	var mu sync.Mutex
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	if max <= min {
-		// Unclear what to do here, or they are the same, so return min *
-		// attemptNum
-		return min * time.Duration(attemptNum)
+	randomF64 := func() float64 {
+		mu.Lock()
+		res := r.Float64()
+		mu.Unlock()
+		return res
 	}
 
-	// Pick a random number that lies somewhere between the min and max and
-	// multiply by the attemptNum. attemptNum starts at zero so we always
-	// increment here. We first get a random percentage, then apply that to the
-	// difference between min and max, and add to min.
-	jitter := random.Float64() * float64(max-min)
-	jitterMin := int64(jitter) + int64(min)
-	return time.Duration(jitterMin * int64(attemptNum))
+	return func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+		// attemptNum always starts at zero but we want to start at 1 for multiplication
+		attemptNum++
+
+		if max <= min {
+			// Unclear what to do here, or they are the same, so return min *
+			// attemptNum
+			return min * time.Duration(attemptNum)
+		}
+
+		// Pick a random number that lies somewhere between the min and max and
+		// multiply by the attemptNum. attemptNum starts at zero so we always
+		// increment here. We first get a random percentage, then apply that to the
+		// difference between min and max, and add to min.
+		jitter := randomF64() * float64(max-min)
+		jitterMin := int64(jitter) + int64(min)
+		return time.Duration(jitterMin * int64(attemptNum))
+	}
 }
 
 // PassthroughErrorHandler is an ErrorHandler that directly passes through the

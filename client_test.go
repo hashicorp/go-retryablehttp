@@ -13,6 +13,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -633,6 +634,47 @@ func TestClient_BackoffCustom(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 	resp.Body.Close()
+	if retries != int32(client.RetryMax) {
+		t.Fatalf("expected retries: %d != %d", client.RetryMax, retries)
+	}
+}
+
+func TestClient_LinearJitterBackoff_Concurrent(t *testing.T) {
+	var retries int32
+
+	client := NewClient()
+	client.RetryWaitMin = 100 * time.Millisecond
+	client.RetryWaitMax = 500 * time.Millisecond
+	client.Backoff = func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+		atomic.AddInt32(&retries, 1)
+		return LinearJitterBackoff(min, max, attemptNum, resp)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.LoadInt32(&retries) == int32(client.RetryMax) {
+			w.WriteHeader(200)
+			return
+		}
+		w.WriteHeader(500)
+	}))
+	defer ts.Close()
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			// Make the request.
+			resp, err := client.Get(ts.URL + "/foo/bar")
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			resp.Body.Close()
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+
 	if retries != int32(client.RetryMax) {
 		t.Fatalf("expected retries: %d != %d", client.RetryMax, retries)
 	}
