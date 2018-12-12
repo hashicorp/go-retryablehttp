@@ -34,6 +34,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/go-cleanhttp"
@@ -299,6 +300,12 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 	return sleep
 }
 
+var seedOnce sync.Once
+
+func seedFunc() {
+	rand.Seed(int64(time.Now().Nanosecond()))
+}
+
 // LinearJitterBackoff provides a callback for Client.Backoff which will
 // perform linear backoff based on the attempt number and with jitter to
 // prevent a thundering herd.
@@ -325,8 +332,8 @@ func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Resp
 		return min * time.Duration(attemptNum)
 	}
 
-	// Seed rand; doing this every time is fine
-	rand := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
+	// Seed rand
+	seedOnce.Do(seedFunc)
 
 	// Pick a random number that lies somewhere between the min and max and
 	// multiply by the attemptNum. attemptNum starts at zero so we always
