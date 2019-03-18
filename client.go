@@ -247,7 +247,7 @@ type ErrorHandler func(resp *http.Response, err error, numTries int) (*http.Resp
 // like automatic retries to tolerate minor outages.
 type Client struct {
 	HTTPClient *http.Client // Internal HTTP client.
-	Logger     Logger       // Customer logger instance.
+	Logger     nlogger.Structured       // Customer logger instance.
 
 	RetryWaitMin time.Duration // Minimum time to wait
 	RetryWaitMax time.Duration // Maximum time to wait
