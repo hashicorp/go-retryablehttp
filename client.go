@@ -27,7 +27,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"math"
 	"math/rand"
 	"net/http"
@@ -36,6 +35,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lalamove/nui/nlogger"
 	cleanhttp "github.com/hashicorp/go-cleanhttp"
 )
 
@@ -207,9 +207,7 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 
 // Logger interface allows to use other loggers than
 // standard log.Logger.
-type Logger interface {
-	Printf(string, ...interface{})
-}
+type Logger = nlogger.Structured
 
 // RequestLogHook allows a function to run before each retry. The HTTP
 // request which will be made, and the retry number (0 for the initial
@@ -277,8 +275,8 @@ type Client struct {
 // NewClient creates a new Client with default settings.
 func NewClient() *Client {
 	return &Client{
+		Logger:       nlogger.New(os.Stderr, "[HTTP RETRY-CLIENT]"),
 		HTTPClient:   cleanhttp.DefaultClient(),
-		Logger:       log.New(os.Stderr, "", log.LstdFlags),
 		RetryWaitMin: defaultRetryWaitMin,
 		RetryWaitMax: defaultRetryWaitMax,
 		RetryMax:     defaultRetryMax,
@@ -369,7 +367,10 @@ func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Respo
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
 	if c.Logger != nil {
-		c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
+		c.Logger.DebugWithFields("Sending request for method", func(entry nlogger.Entry) {
+			entry.String("method", req.Method)
+			entry.String("url", req.URL.String())
+		})
 	}
 
 	var resp *http.Response
@@ -406,7 +407,10 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		if err != nil {
 			if c.Logger != nil {
-				c.Logger.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
+				c.Logger.ErrorWithFields(err.Error(), func(entry nlogger.Entry) {
+					entry.String("method", req.Method)
+					entry.String("url", req.URL.String())
+				})
 			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
@@ -443,7 +447,13 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			desc = fmt.Sprintf("%s (status: %d)", desc, code)
 		}
 		if c.Logger != nil {
-			c.Logger.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
+			c.Logger.DebugWithFields(fmt.Sprintf("%s: retrying in %s (%d left)",desc, wait, remain ), func(entry nlogger.Entry) {
+				entry.Int("remain", remain)
+				entry.String("desc", desc)
+				entry.String("method", req.Method)
+				entry.String("wait", wait.String())
+				entry.String("url", req.URL.String())
+			})
 		}
 		time.Sleep(wait)
 	}
@@ -467,7 +477,7 @@ func (c *Client) drainBody(body io.ReadCloser) {
 	_, err := io.Copy(ioutil.Discard, io.LimitReader(body, respReadLimit))
 	if err != nil {
 		if c.Logger != nil {
-			c.Logger.Printf("[ERR] error reading response body: %v", err)
+			c.Logger.Error(err.Error())
 		}
 	}
 }
