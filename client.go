@@ -416,8 +416,10 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		})
 	}
 
-	var timer = prometheus.NewTimer(c.metrics.doDuration)
-	defer timer.ObserveDuration()
+	if c.metrics != nil {
+		var timer = prometheus.NewTimer(c.metrics.doDuration)
+		defer timer.ObserveDuration()
+	}
 
 	var resp *http.Response
 	var err error
@@ -499,10 +501,12 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 				err = checkErr
 			}
 
-			if c.metrics != nil && err != nil {
-				c.metrics.doFailure.Inc()
-			} else {
-				c.metrics.doSuccess.Inc()
+			if c.metrics != nil {
+				if err != nil {
+					c.metrics.doFailure.Inc()
+				} else {
+					c.metrics.doSuccess.Inc()
+				}
 			}
 			return resp, err
 		}
