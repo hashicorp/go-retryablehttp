@@ -35,6 +35,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/lalamove/nui/ntracing"
 
 	cleanhttp "github.com/hashicorp/go-cleanhttp"
@@ -394,17 +396,17 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		c.metrics.doTotal.Inc()
 	}
 
+	// If modifier is provided then modify request.
+	if c.RequestModifier != nil {
+		req = c.RequestModifier(req)
+	}
+
 	var ctx = req.Context()
 	if span, ok := ntracing.NewChildSpanFromContext(ctx, "httpClient.Do"); ok {
 		defer span.Finish()
 
 		ctx = context.WithValue(ctx, ntracing.SpanKey, span)
 		req.WithContext(ctx)
-	}
-
-	// If modifier is provided then modify request.
-	if c.RequestModifier != nil {
-		req = c.RequestModifier(req)
 	}
 
 	if c.Logger != nil {
@@ -414,16 +416,36 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		})
 	}
 
+	var timer = prometheus.NewTimer(c.metrics.doDuration)
+	defer timer.ObserveDuration()
+
 	var resp *http.Response
 	var err error
 
+	var retryTimer *prometheus.Timer
 	for i := 0; ; i++ {
+		if c.metrics != nil && i > 0 {
+			retryTimer = prometheus.NewTimer(c.metrics.doRetryDuration)
+			c.metrics.doRetries.Inc()
+		}
+
 		var code int // HTTP response code
 
 		// Always rewind the request body when non-nil.
 		if req.body != nil {
 			body, err := req.body()
 			if err != nil {
+				if retryTimer != nil {
+					retryTimer.ObserveDuration()
+					retryTimer = nil
+				}
+
+				if c.metrics != nil {
+					c.metrics.doFailure.Inc()
+					if i > 0 {
+						c.metrics.doRetriesFailure.Inc()
+					}
+				}
 				return resp, err
 			}
 			if c, ok := body.(io.ReadCloser); ok {
@@ -446,8 +468,13 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		// Check if we should continue with retries.
 		checkOK, checkErr := c.CheckRetry(req.Request.Context(), resp, err)
 
+		if retryTimer != nil {
+			retryTimer.ObserveDuration()
+			retryTimer = nil
+		}
+
 		if err != nil {
-			if c.metrics != nil {
+			if c.metrics != nil && i > 0 {
 				c.metrics.doRetriesFailure.Inc()
 			}
 
@@ -471,17 +498,22 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			if checkErr != nil {
 				err = checkErr
 			}
-			return resp, err
-		}
 
-		if c.metrics != nil {
-			c.metrics.doRetries.Inc()
+			if c.metrics != nil && err != nil {
+				c.metrics.doFailure.Inc()
+			} else {
+				c.metrics.doSuccess.Inc()
+			}
+			return resp, err
 		}
 
 		// We do this before drainBody beause there's no need for the I/O if
 		// we're breaking out
 		remain := c.RetryMax - i
 		if remain <= 0 {
+			if c.metrics != nil && err != nil {
+				c.metrics.doFailure.Inc()
+			}
 			break
 		}
 
@@ -508,9 +540,6 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	}
 
 	if c.ErrorHandler != nil {
-		if c.metrics != nil {
-			c.metrics.doFailure.Inc()
-		}
 		return c.ErrorHandler(resp, err, c.RetryMax+1)
 	}
 

@@ -24,42 +24,35 @@ func initMetrics() (*retryHttpMetrics, error) {
 				Name: doCallCount,
 				Help: "Number of http Client.Do calls",
 			},
-			[]string{"result"},
+			[]string{"total"},
 		),
 		doCallFailureCount: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: doCallFailureCount,
 				Help: "Number of http Client.Do failed calls",
 			},
-			[]string{"result"},
+			[]string{""},
 		),
 		doCallSuccessCount: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: doCallSuccessCount,
-				Help: "Number of http Client.Do success calls",
+				Help: "Number of http Client.Do calls that succeeded",
 			},
-			[]string{"result"},
+			[]string{"total"},
 		),
 		doRetryCallCount: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: doRetryCallCount,
-				Help: "Number of http Client.Do calls",
+				Help: "Number of http Client.Do retry calls",
 			},
-			[]string{"result"},
+			[]string{"total"},
 		),
 		doRetryCallFailureCount: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: doRetryCallFailureCount,
-				Help: "Number of http Client.Do failed calls",
+				Help: "Number of http Client.Do failed  retry calls",
 			},
-			[]string{"result"},
-		),
-		doRetryCallSuccessCount: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: doRetryCallSuccessCount,
-				Help: "Number of http Client.Do success calls",
-			},
-			[]string{"result"},
+			[]string{"total"},
 		),
 		doDuration: prometheus.NewSummaryVec(
 			prometheus.SummaryOpts{
@@ -67,7 +60,7 @@ func initMetrics() (*retryHttpMetrics, error) {
 				Help:       "Durations per http request made in a summary vector",
 				Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.95: 0.005, 0.99: 0.001},
 			},
-			[]string{"request_url", "request_method", "response_status"},
+			[]string{"request_duration"},
 		),
 		retryDuration: prometheus.NewSummaryVec(
 			prometheus.SummaryOpts{
@@ -75,7 +68,7 @@ func initMetrics() (*retryHttpMetrics, error) {
 				Help:       "Durations per http request retry in a summary vector",
 				Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.95: 0.005, 0.99: 0.001},
 			},
-			[]string{"request_url", "request_method", "response_status"},
+			[]string{"request_duration"},
 		),
 	}
 
@@ -88,7 +81,6 @@ func initMetrics() (*retryHttpMetrics, error) {
 	var doCallFailures = prometheusMetrics[doCallFailureCount].(*prometheus.CounterVec)
 
 	var doRetries = prometheusMetrics[doRetryCallCount].(*prometheus.CounterVec)
-	var doRetriesSuccess = prometheusMetrics[doRetryCallSuccessCount].(*prometheus.CounterVec)
 	var doRetriesFailures = prometheusMetrics[doRetryCallFailureCount].(*prometheus.CounterVec)
 
 	var doDurations = prometheusMetrics[doDuration].(*prometheus.SummaryVec)
@@ -96,18 +88,17 @@ func initMetrics() (*retryHttpMetrics, error) {
 
 	var metrics = &retryHttpMetrics{
 		// do counters
-		doTotal:   doCalls.WithLabelValues("do_total"),
-		doFailure: doCallFailures.WithLabelValues("do_failed"),
-		doSuccess: doCallSuccess.WithLabelValues("do_success"),
+		doTotal:   doCalls.WithLabelValues("http.do.total"),
+		doFailure: doCallFailures.WithLabelValues("http.do.failed"),
+		doSuccess: doCallSuccess.WithLabelValues("http.do.succeeded"),
 
 		// retry counters
-		doRetries:        doRetries.WithLabelValues("retry_total"),
-		doRetriesSuccess: doRetriesSuccess.WithLabelValues("retry_failed"),
-		doRetriesFailure: doRetriesFailures.WithLabelValues("retry_success"),
+		doRetries:        doRetries.WithLabelValues("http.do.retires"),
+		doRetriesFailure: doRetriesFailures.WithLabelValues("http.do.retries.failed"),
 
 		// durations
-		doDuration:      doDurations.WithLabelValues("http_client_do_total_duration"),
-		doRetryDuration: doRetryDurations.WithLabelValues("http_client_do_retry_total_duration"),
+		doDuration:      doDurations.WithLabelValues("http.do.duration"),
+		doRetryDuration: doRetryDurations.WithLabelValues("http.do.retry.duration"),
 	}
 	return metrics, nil
 }
@@ -117,7 +108,6 @@ type retryHttpMetrics struct {
 	doSuccess        prometheus.Counter
 	doFailure        prometheus.Counter
 	doRetries        prometheus.Counter
-	doRetriesSuccess prometheus.Counter
 	doRetriesFailure prometheus.Counter
 	doDuration       prometheus.Observer
 	doRetryDuration  prometheus.Observer
