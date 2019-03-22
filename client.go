@@ -205,12 +205,6 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 	return &Request{body, httpReq}, nil
 }
 
-// Logger interface allows to use other loggers than
-// standard log.Logger.
-type Logger interface {
-	Printf(string, ...interface{})
-}
-
 // RequestLogHook allows a function to run before each retry. The HTTP
 // request which will be made, and the retry number (0 for the initial
 // request) are available to users. The internal logger is exposed to
@@ -278,7 +272,7 @@ type Client struct {
 func NewClient() *Client {
 	return &Client{
 		HTTPClient:   cleanhttp.DefaultClient(),
-		Logger:       log.New(os.Stderr, "", log.LstdFlags),
+		Logger:       NewStdLogger(os.Stderr, "", log.LstdFlags),
 		RetryWaitMin: defaultRetryWaitMin,
 		RetryWaitMax: defaultRetryWaitMax,
 		RetryMax:     defaultRetryMax,
@@ -369,7 +363,7 @@ func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Respo
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
 	if c.Logger != nil {
-		c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
+		c.Logger.Debugf("%s %s", req.Method, req.URL)
 	}
 
 	var resp *http.Response
@@ -406,7 +400,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		if err != nil {
 			if c.Logger != nil {
-				c.Logger.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
+				c.Logger.Errorf("%s %s request failed: %v", req.Method, req.URL, err)
 			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
@@ -443,7 +437,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			desc = fmt.Sprintf("%s (status: %d)", desc, code)
 		}
 		if c.Logger != nil {
-			c.Logger.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
+			c.Logger.Debugf("%s: retrying in %s (%d left)", desc, wait, remain)
 		}
 		time.Sleep(wait)
 	}
@@ -467,7 +461,7 @@ func (c *Client) drainBody(body io.ReadCloser) {
 	_, err := io.Copy(ioutil.Discard, io.LimitReader(body, respReadLimit))
 	if err != nil {
 		if c.Logger != nil {
-			c.Logger.Printf("[ERR] error reading response body: %v", err)
+			c.Logger.Errorf("error reading response body: %v", err)
 		}
 	}
 }

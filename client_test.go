@@ -321,21 +321,21 @@ func TestClient_ResponseLogHook(t *testing.T) {
 	buf := new(bytes.Buffer)
 
 	client := NewClient()
-	client.Logger = log.New(buf, "", log.LstdFlags)
+	client.Logger = NewStdLogger(buf, "", log.LstdFlags)
 	client.RetryWaitMin = 10 * time.Millisecond
 	client.RetryWaitMax = 10 * time.Millisecond
 	client.RetryMax = 15
 	client.ResponseLogHook = func(logger Logger, resp *http.Response) {
 		if resp.StatusCode == 200 {
 			// Log something when we get a 200
-			logger.Printf("test_log_pass")
+			logger.Debugf("test_log_pass")
 		} else {
 			// Log the response body when we get a 500
 			body, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			logger.Printf("%s", body)
+			logger.Debugf("%s", body)
 		}
 	}
 
