@@ -456,12 +456,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		return c.ErrorHandler(resp, err, c.RetryMax+1)
 	}
 
-	// By default, we close the response body and return an error without
-	// returning the response
-	if resp != nil {
-		resp.Body.Close()
-	}
-	return nil, fmt.Errorf("%s %s giving up after %d attempts",
+	// By default, we return the response and an error
+	return resp, fmt.Errorf("%s %s giving up after %d attempts",
 		req.Method, req.URL, c.RetryMax+1)
 }
 

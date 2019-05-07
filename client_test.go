@@ -217,6 +217,7 @@ func TestClient_Do_fails(t *testing.T) {
 	// Mock server which always responds 500.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
+		w.Write([]byte("something went wrong"))
 	}))
 	defer ts.Close()
 
@@ -233,9 +234,20 @@ func TestClient_Do_fails(t *testing.T) {
 	}
 
 	// Send the request.
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
+	if resp == nil {
+		t.Fatalf("response should not be nil")
+	}
+	defer resp.Body.Close()
 	if err == nil || !strings.Contains(err.Error(), "giving up") {
 		t.Fatalf("expected giving up error, got: %#v", err)
+	}
+	respBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read response body, got: %#v", err)
+	}
+	if !strings.Contains(string(respBody), "wrong") {
+		t.Fatalf("expected response to contain message with word 'wrong', got: %s", respBody)
 	}
 }
 
