@@ -277,7 +277,7 @@ type Client struct {
 // NewClient creates a new Client with default settings.
 func NewClient() *Client {
 	return &Client{
-		HTTPClient:   cleanhttp.DefaultClient(),
+		HTTPClient:   cleanhttp.DefaultPooledClient(),
 		Logger:       log.New(os.Stderr, "", log.LstdFlags),
 		RetryWaitMin: defaultRetryWaitMin,
 		RetryWaitMax: defaultRetryWaitMax,
@@ -368,6 +368,10 @@ func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Respo
 
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
+	if c.HTTPClient == nil {
+		c.HTTPClient = cleanhttp.DefaultPooledClient()
+	}
+
 	if c.Logger != nil {
 		c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
 	}
@@ -382,6 +386,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if req.body != nil {
 			body, err := req.body()
 			if err != nil {
+				c.HTTPClient.CloseIdleConnections()
 				return resp, err
 			}
 			if c, ok := body.(io.ReadCloser); ok {
@@ -422,6 +427,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			if checkErr != nil {
 				err = checkErr
 			}
+			c.HTTPClient.CloseIdleConnections()
 			return resp, err
 		}
 
@@ -447,12 +453,14 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		}
 		select {
 		case <-req.Context().Done():
+			c.HTTPClient.CloseIdleConnections()
 			return nil, req.Context().Err()
 		case <-time.After(wait):
 		}
 	}
 
 	if c.ErrorHandler != nil {
+		c.HTTPClient.CloseIdleConnections()
 		return c.ErrorHandler(resp, err, c.RetryMax+1)
 	}
 
@@ -461,6 +469,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	if resp != nil {
 		resp.Body.Close()
 	}
+	c.HTTPClient.CloseIdleConnections()
 	return nil, fmt.Errorf("%s %s giving up after %d attempts",
 		req.Method, req.URL, c.RetryMax+1)
 }
