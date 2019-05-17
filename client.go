@@ -230,7 +230,7 @@ type ResponseLogHook func(Logger, *http.Response)
 // and returns the response to the caller. If CheckRetry returns an error,
 // that error value is returned in lieu of the error from the request. The
 // Client will close any response body when retrying, but if the retry is
-// aborted it is up to the CheckResponse callback to properly close any
+// aborted it is up to the CheckRetry callback to properly close any
 // response body before returning.
 type CheckRetry func(ctx context.Context, resp *http.Response, err error) (bool, error)
 
