@@ -103,9 +103,7 @@ func (r *Request) BodyBytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// NewRequest creates a new wrapped request.
-func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
-	var err error
+func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, error) {
 	var bodyReader ReaderFunc
 	var contentLength int64
 
@@ -116,7 +114,7 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 			bodyReader = body
 			tmp, err := body()
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			if lr, ok := tmp.(LenReader); ok {
 				contentLength = int64(lr.Len())
@@ -129,7 +127,7 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 			bodyReader = body
 			tmp, err := body()
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			if lr, ok := tmp.(LenReader); ok {
 				contentLength = int64(lr.Len())
@@ -162,7 +160,7 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 		case *bytes.Reader:
 			buf, err := ioutil.ReadAll(body)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			bodyReader = func() (io.Reader, error) {
 				return bytes.NewReader(buf), nil
@@ -184,7 +182,7 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 		case io.Reader:
 			buf, err := ioutil.ReadAll(body)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			bodyReader = func() (io.Reader, error) {
 				return bytes.NewReader(buf), nil
@@ -192,8 +190,27 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 			contentLength = int64(len(buf))
 
 		default:
-			return nil, fmt.Errorf("cannot handle type %T", rawBody)
+			return nil, 0, fmt.Errorf("cannot handle type %T", rawBody)
 		}
+	}
+	return bodyReader, contentLength, nil
+}
+
+// FromRequest wraps an http.Request in a retryablehttp.Request
+func FromRequest(r *http.Request) (*Request, error) {
+	bodyReader, _, err := getBodyReaderAndContentLength(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	// Could assert contentLength == r.ContentLength
+	return &Request{bodyReader, r}, nil
+}
+
+// NewRequest creates a new wrapped request.
+func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
+	bodyReader, contentLength, err := getBodyReaderAndContentLength(rawBody)
+	if err != nil {
+		return nil, err
 	}
 
 	httpReq, err := http.NewRequest(method, url, nil)

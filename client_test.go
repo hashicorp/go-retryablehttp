@@ -50,6 +50,40 @@ func TestRequest(t *testing.T) {
 	}
 }
 
+func TestFromRequest(t *testing.T) {
+	// Works with no request body
+	httpReq, err := http.NewRequest("GET", "http://foo", nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	_, err = FromRequest(httpReq)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// Works with request body
+	body := bytes.NewReader([]byte("yo"))
+	httpReq, err = http.NewRequest("GET", "/", body)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	req, err := FromRequest(httpReq)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// Preserves headers
+	httpReq.Header.Set("X-Test", "foo")
+	if v, ok := req.Header["X-Test"]; !ok || len(v) != 1 || v[0] != "foo" {
+		t.Fatalf("bad headers: %v", req.Header)
+	}
+
+	// Preserves the Content-Length automatically for LenReaders
+	if req.ContentLength != 2 {
+		t.Fatalf("bad ContentLength: %d", req.ContentLength)
+	}
+}
+
 // Since normal ways we would generate a Reader have special cases, use a
 // custom type here
 type custReader struct {
