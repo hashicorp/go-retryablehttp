@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -355,7 +354,7 @@ func TestClient_ResponseLogHook(t *testing.T) {
 	buf := new(bytes.Buffer)
 
 	client := NewClient()
-	client.Logger = log.New(buf, "", log.LstdFlags)
+	client.Logger = newStdLogger(buf)
 	client.RetryWaitMin = 10 * time.Millisecond
 	client.RetryWaitMax = 10 * time.Millisecond
 	client.RetryMax = 15
