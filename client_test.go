@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/hashicorp/go-hclog"
 )
 
 func TestRequest(t *testing.T) {
@@ -355,21 +356,26 @@ func TestClient_ResponseLogHook(t *testing.T) {
 	buf := new(bytes.Buffer)
 
 	client := NewClient()
-	client.Logger = log.New(buf, "", log.LstdFlags)
+
+	l := hclog.New(&hclog.LoggerOptions{
+		Output: buf,
+	})
+
+	client.Logger = l
 	client.RetryWaitMin = 10 * time.Millisecond
 	client.RetryWaitMax = 10 * time.Millisecond
 	client.RetryMax = 15
 	client.ResponseLogHook = func(logger Logger, resp *http.Response) {
 		if resp.StatusCode == 200 {
 			// Log something when we get a 200
-			logger.Printf("test_log_pass")
+			logger.Info("test_log_pass")
 		} else {
 			// Log the response body when we get a 500
 			body, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			logger.Printf("%s", body)
+			logger.Info("request", "body", string(body))
 		}
 	}
 
