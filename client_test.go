@@ -368,14 +368,14 @@ func TestClient_ResponseLogHook(t *testing.T) {
 	client.ResponseLogHook = func(logger Logger, resp *http.Response) {
 		if resp.StatusCode == 200 {
 			// Log something when we get a 200
-			logger.Info("test_log_pass")
+			logger.Printf("test_log_pass")
 		} else {
 			// Log the response body when we get a 500
 			body, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			logger.Info("request", "body", string(body))
+			logger.Printf("request", "body", string(body))
 		}
 	}
 
