@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/hashicorp/go-hclog"
 )
 
 func TestRequest(t *testing.T) {
@@ -355,7 +356,12 @@ func TestClient_ResponseLogHook(t *testing.T) {
 	buf := new(bytes.Buffer)
 
 	client := NewClient()
-	client.Logger = log.New(buf, "", log.LstdFlags)
+
+	l := hclog.New(&hclog.LoggerOptions{
+		Output: buf,
+	})
+
+	client.Logger = l
 	client.RetryWaitMin = 10 * time.Millisecond
 	client.RetryWaitMax = 10 * time.Millisecond
 	client.RetryMax = 15
@@ -369,7 +375,7 @@ func TestClient_ResponseLogHook(t *testing.T) {
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			logger.Printf("%s", body)
+			logger.Printf("request", "body", string(body))
 		}
 	}
 

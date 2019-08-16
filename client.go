@@ -34,9 +34,11 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	cleanhttp "github.com/hashicorp/go-cleanhttp"
+	"github.com/hashicorp/go-hclog"
 )
 
 var (
@@ -228,6 +230,16 @@ type Logger interface {
 	Printf(string, ...interface{})
 }
 
+// To adapt an hclog.Logger to Logger for use by the existing hook functions
+// without changing the API.
+type hookLogger struct {
+	logger hclog.Logger
+}
+
+func (h hookLogger) Printf(s string, args ...interface{}) {
+	h.logger.Info(fmt.Sprintf(s, args...))
+}
+
 // RequestLogHook allows a function to run before each retry. The HTTP
 // request which will be made, and the retry number (0 for the initial
 // request) are available to users. The internal logger is exposed to
@@ -266,7 +278,7 @@ type ErrorHandler func(resp *http.Response, err error, numTries int) (*http.Resp
 // like automatic retries to tolerate minor outages.
 type Client struct {
 	HTTPClient *http.Client // Internal HTTP client.
-	Logger     Logger       // Customer logger instance.
+	Logger     interface{}  // Customer logger instance. Can be either Logger or hclog.Logger
 
 	RetryWaitMin time.Duration // Minimum time to wait
 	RetryWaitMax time.Duration // Maximum time to wait
@@ -289,19 +301,40 @@ type Client struct {
 
 	// ErrorHandler specifies the custom error handler to use, if any
 	ErrorHandler ErrorHandler
+
+	loggerInit sync.Once
 }
 
 // NewClient creates a new Client with default settings.
 func NewClient() *Client {
 	return &Client{
 		HTTPClient:   cleanhttp.DefaultClient(),
-		Logger:       log.New(os.Stderr, "", log.LstdFlags),
 		RetryWaitMin: defaultRetryWaitMin,
 		RetryWaitMax: defaultRetryWaitMax,
 		RetryMax:     defaultRetryMax,
 		CheckRetry:   DefaultRetryPolicy,
 		Backoff:      DefaultBackoff,
 	}
+}
+
+func (c *Client) logger() interface{} {
+	c.loggerInit.Do(func() {
+		if c.Logger == nil {
+			c.Logger = log.New(os.Stderr, "", log.LstdFlags)
+		} else {
+			switch c.Logger.(type) {
+			case Logger:
+				// ok
+			case hclog.Logger:
+				// ok
+			default:
+				// This should happen in dev when they are setting Logger and work on code, not in prod.
+				panic(fmt.Sprintf("invalid logger type passed, must be Logger or hclog.Logger, was %T", c.Logger))
+			}
+		}
+	})
+
+	return c.Logger
 }
 
 // DefaultRetryPolicy provides a default callback for Client.CheckRetry, which
@@ -385,8 +418,13 @@ func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Respo
 
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
-	if c.Logger != nil {
-		c.Logger.Printf("[DEBUG] %s %s", req.Method, req.URL)
+	if c.logger() != nil {
+		switch v := c.logger().(type) {
+		case Logger:
+			v.Printf("[DEBUG] %s %s", req.Method, req.URL)
+		case hclog.Logger:
+			v.Debug("performing request", "method", req.Method, "url", req.URL)
+		}
 	}
 
 	var resp *http.Response
@@ -409,7 +447,14 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		}
 
 		if c.RequestLogHook != nil {
-			c.RequestLogHook(c.Logger, req.Request, i)
+			switch v := c.logger().(type) {
+			case Logger:
+				c.RequestLogHook(v, req.Request, i)
+			case hclog.Logger:
+				c.RequestLogHook(hookLogger{v}, req.Request, i)
+			default:
+				c.RequestLogHook(nil, req.Request, i)
+			}
 		}
 
 		// Attempt the request
@@ -422,15 +467,27 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		checkOK, checkErr := c.CheckRetry(req.Context(), resp, err)
 
 		if err != nil {
-			if c.Logger != nil {
-				c.Logger.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
+			if c.logger() != nil {
+				switch v := c.logger().(type) {
+				case Logger:
+					v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
+				case hclog.Logger:
+					v.Error("request failed", "error", err, "method", req.Method, "url", req.URL)
+				}
 			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
 			// even if CheckRetry signals to stop.
 			if c.ResponseLogHook != nil {
 				// Call the response logger function if provided.
-				c.ResponseLogHook(c.Logger, resp)
+				switch v := c.logger().(type) {
+				case Logger:
+					c.ResponseLogHook(v, resp)
+				case hclog.Logger:
+					c.ResponseLogHook(hookLogger{v}, resp)
+				default:
+					c.ResponseLogHook(nil, resp)
+				}
 			}
 		}
 
@@ -459,8 +516,13 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if code > 0 {
 			desc = fmt.Sprintf("%s (status: %d)", desc, code)
 		}
-		if c.Logger != nil {
-			c.Logger.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
+		if c.logger() != nil {
+			switch v := c.logger().(type) {
+			case Logger:
+				v.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
+			case hclog.Logger:
+				v.Debug("retrying request", "request", desc, "timeout", wait, "remaining", remain)
+			}
 		}
 		select {
 		case <-req.Context().Done():
@@ -487,8 +549,13 @@ func (c *Client) drainBody(body io.ReadCloser) {
 	defer body.Close()
 	_, err := io.Copy(ioutil.Discard, io.LimitReader(body, respReadLimit))
 	if err != nil {
-		if c.Logger != nil {
-			c.Logger.Printf("[ERR] error reading response body: %v", err)
+		if c.logger() != nil {
+			switch v := c.logger().(type) {
+			case Logger:
+				v.Printf("[ERR] error reading response body: %v", err)
+			case hclog.Logger:
+				v.Error("error reading response body", "error", err)
+			}
 		}
 	}
 }
