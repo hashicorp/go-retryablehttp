@@ -309,7 +309,6 @@ type Client struct {
 func NewClient() *Client {
 	return &Client{
 		HTTPClient:   cleanhttp.DefaultPooledClient(),
-		Logger:       log.New(os.Stderr, "", log.LstdFlags),
 		RetryWaitMin: defaultRetryWaitMin,
 		RetryWaitMax: defaultRetryWaitMax,
 		RetryMax:     defaultRetryMax,
