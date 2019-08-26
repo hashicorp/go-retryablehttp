@@ -309,6 +309,7 @@ type Client struct {
 func NewClient() *Client {
 	return &Client{
 		HTTPClient:   cleanhttp.DefaultPooledClient(),
+		Logger:       log.New(os.Stderr, "", log.LstdFlags),
 		RetryWaitMin: defaultRetryWaitMin,
 		RetryWaitMax: defaultRetryWaitMax,
 		RetryMax:     defaultRetryMax,
@@ -320,17 +321,17 @@ func NewClient() *Client {
 func (c *Client) logger() interface{} {
 	c.loggerInit.Do(func() {
 		if c.Logger == nil {
-			c.Logger = log.New(os.Stderr, "", log.LstdFlags)
-		} else {
-			switch c.Logger.(type) {
-			case Logger:
-				// ok
-			case hclog.Logger:
-				// ok
-			default:
-				// This should happen in dev when they are setting Logger and work on code, not in prod.
-				panic(fmt.Sprintf("invalid logger type passed, must be Logger or hclog.Logger, was %T", c.Logger))
-			}
+			return
+		}
+
+		switch c.Logger.(type) {
+		case Logger:
+			// ok
+		case hclog.Logger:
+			// ok
+		default:
+			// This should happen in dev when they are setting Logger and work on code, not in prod.
+			panic(fmt.Sprintf("invalid logger type passed, must be Logger or hclog.Logger, was %T", c.Logger))
 		}
 	})
 
