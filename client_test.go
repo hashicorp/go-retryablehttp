@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/hashicorp/go-hclog"
 )
 
 func TestRequest(t *testing.T) {
@@ -45,6 +46,40 @@ func TestRequest(t *testing.T) {
 	}
 
 	// Sets the Content-Length automatically for LenReaders
+	if req.ContentLength != 2 {
+		t.Fatalf("bad ContentLength: %d", req.ContentLength)
+	}
+}
+
+func TestFromRequest(t *testing.T) {
+	// Works with no request body
+	httpReq, err := http.NewRequest("GET", "http://foo", nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	_, err = FromRequest(httpReq)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// Works with request body
+	body := bytes.NewReader([]byte("yo"))
+	httpReq, err = http.NewRequest("GET", "/", body)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	req, err := FromRequest(httpReq)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// Preserves headers
+	httpReq.Header.Set("X-Test", "foo")
+	if v, ok := req.Header["X-Test"]; !ok || len(v) != 1 || v[0] != "foo" {
+		t.Fatalf("bad headers: %v", req.Header)
+	}
+
+	// Preserves the Content-Length automatically for LenReaders
 	if req.ContentLength != 2 {
 		t.Fatalf("bad ContentLength: %d", req.ContentLength)
 	}
@@ -321,7 +356,12 @@ func TestClient_ResponseLogHook(t *testing.T) {
 	buf := new(bytes.Buffer)
 
 	client := NewClient()
-	client.Logger = log.New(buf, "", log.LstdFlags)
+
+	l := hclog.New(&hclog.LoggerOptions{
+		Output: buf,
+	})
+
+	client.Logger = l
 	client.RetryWaitMin = 10 * time.Millisecond
 	client.RetryWaitMax = 10 * time.Millisecond
 	client.RetryMax = 15
@@ -335,7 +375,7 @@ func TestClient_ResponseLogHook(t *testing.T) {
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			logger.Printf("%s", body)
+			logger.Printf("request", "body", string(body))
 		}
 	}
 
