@@ -454,16 +454,14 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			}
 		}
 
-		if c.RequestLogHook != nil {
-			if logger != nil {
-				switch v := logger.(type) {
-				case Logger:
-					c.RequestLogHook(v, req.Request, i)
-				case hclog.Logger:
-					c.RequestLogHook(hookLogger{v}, req.Request, i)
-				default:
-					c.RequestLogHook(nil, req.Request, i)
-				}
+		if c.RequestLogHook != nil && logger != nil {
+			switch v := logger.(type) {
+			case Logger:
+				c.RequestLogHook(v, req.Request, i)
+			case hclog.Logger:
+				c.RequestLogHook(hookLogger{v}, req.Request, i)
+			default:
+				c.RequestLogHook(nil, req.Request, i)
 			}
 		}
 
