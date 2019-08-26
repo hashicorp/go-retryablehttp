@@ -309,6 +309,7 @@ type Client struct {
 func NewClient() *Client {
 	return &Client{
 		HTTPClient:   cleanhttp.DefaultPooledClient(),
+		Logger:       log.New(os.Stderr, "", log.LstdFlags),
 		RetryWaitMin: defaultRetryWaitMin,
 		RetryWaitMax: defaultRetryWaitMax,
 		RetryMax:     defaultRetryMax,
@@ -320,17 +321,17 @@ func NewClient() *Client {
 func (c *Client) logger() interface{} {
 	c.loggerInit.Do(func() {
 		if c.Logger == nil {
-			c.Logger = log.New(os.Stderr, "", log.LstdFlags)
-		} else {
-			switch c.Logger.(type) {
-			case Logger:
-				// ok
-			case hclog.Logger:
-				// ok
-			default:
-				// This should happen in dev when they are setting Logger and work on code, not in prod.
-				panic(fmt.Sprintf("invalid logger type passed, must be Logger or hclog.Logger, was %T", c.Logger))
-			}
+			return
+		}
+
+		switch c.Logger.(type) {
+		case Logger:
+			// ok
+		case hclog.Logger:
+			// ok
+		default:
+			// This should happen in dev when they are setting Logger and work on code, not in prod.
+			panic(fmt.Sprintf("invalid logger type passed, must be Logger or hclog.Logger, was %T", c.Logger))
 		}
 	})
 
@@ -422,8 +423,10 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		c.HTTPClient = cleanhttp.DefaultPooledClient()
 	}
 
-	if c.logger() != nil {
-		switch v := c.logger().(type) {
+	logger := c.logger()
+
+	if logger != nil {
+		switch v := logger.(type) {
 		case Logger:
 			v.Printf("[DEBUG] %s %s", req.Method, req.URL)
 		case hclog.Logger:
@@ -451,8 +454,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			}
 		}
 
-		if c.RequestLogHook != nil {
-			switch v := c.logger().(type) {
+		if c.RequestLogHook != nil && logger != nil {
+			switch v := logger.(type) {
 			case Logger:
 				c.RequestLogHook(v, req.Request, i)
 			case hclog.Logger:
@@ -471,27 +474,27 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		// Check if we should continue with retries.
 		checkOK, checkErr := c.CheckRetry(req.Context(), resp, err)
 
-		if err != nil {
-			if c.logger() != nil {
-				switch v := c.logger().(type) {
+		if logger != nil {
+			if err != nil {
+				switch v := logger.(type) {
 				case Logger:
 					v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
 				case hclog.Logger:
 					v.Error("request failed", "error", err, "method", req.Method, "url", req.URL)
 				}
-			}
-		} else {
-			// Call this here to maintain the behavior of logging all requests,
-			// even if CheckRetry signals to stop.
-			if c.ResponseLogHook != nil {
-				// Call the response logger function if provided.
-				switch v := c.logger().(type) {
-				case Logger:
-					c.ResponseLogHook(v, resp)
-				case hclog.Logger:
-					c.ResponseLogHook(hookLogger{v}, resp)
-				default:
-					c.ResponseLogHook(nil, resp)
+			} else {
+				// Call this here to maintain the behavior of logging all requests,
+				// even if CheckRetry signals to stop.
+				if c.ResponseLogHook != nil {
+					// Call the response logger function if provided.
+					switch v := logger.(type) {
+					case Logger:
+						c.ResponseLogHook(v, resp)
+					case hclog.Logger:
+						c.ResponseLogHook(hookLogger{v}, resp)
+					default:
+						c.ResponseLogHook(nil, resp)
+					}
 				}
 			}
 		}
@@ -522,8 +525,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if code > 0 {
 			desc = fmt.Sprintf("%s (status: %d)", desc, code)
 		}
-		if c.logger() != nil {
-			switch v := c.logger().(type) {
+		if logger != nil {
+			switch v := logger.(type) {
 			case Logger:
 				v.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
 			case hclog.Logger:
