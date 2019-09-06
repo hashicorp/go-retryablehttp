@@ -47,6 +47,9 @@ var (
 	defaultRetryWaitMax = 30 * time.Second
 	defaultRetryMax     = 4
 
+	// defaultLogger is the logger provided with defaultClient
+	defaultLogger = log.New(os.Stderr, "", log.LstdFlags)
+
 	// defaultClient is used for performing requests without explicitly making
 	// a new client. It is purposely private to avoid modifications.
 	defaultClient = NewClient()
@@ -309,7 +312,7 @@ type Client struct {
 func NewClient() *Client {
 	return &Client{
 		HTTPClient:   cleanhttp.DefaultPooledClient(),
-		Logger:       log.New(os.Stderr, "", log.LstdFlags),
+		Logger:       defaultLogger,
 		RetryWaitMin: defaultRetryWaitMin,
 		RetryWaitMax: defaultRetryWaitMax,
 		RetryMax:     defaultRetryMax,
