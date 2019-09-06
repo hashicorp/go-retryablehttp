@@ -6,13 +6,11 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
-	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -298,7 +296,7 @@ func TestClient_Get(t *testing.T) {
 
 func TestClient_RequestLogHook(t *testing.T) {
 	t.Run("RequestLogHook called with default Logger", func(t *testing.T) {
-		testClient_RequestLogHook(t, log.New(os.Stderr, "", log.LstdFlags))
+		testClient_RequestLogHook(t, defaultLogger)
 	})
 	t.Run("RequestLogHook successfully called with nil Logger", func(t *testing.T) {
 		testClient_RequestLogHook(t, nil)
