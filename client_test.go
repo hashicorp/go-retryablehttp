@@ -6,11 +6,13 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -295,6 +297,15 @@ func TestClient_Get(t *testing.T) {
 }
 
 func TestClient_RequestLogHook(t *testing.T) {
+	t.Run("RequestLogHook called with default Logger", func(t *testing.T) {
+		testClient_RequestLogHook(t, log.New(os.Stderr, "", log.LstdFlags))
+	})
+	t.Run("RequestLogHook successfully called with nil Logger", func(t *testing.T) {
+		testClient_RequestLogHook(t, nil)
+	})
+}
+
+func testClient_RequestLogHook(t *testing.T, logger interface{}) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			t.Fatalf("bad method: %s", r.Method)
@@ -310,6 +321,7 @@ func TestClient_RequestLogHook(t *testing.T) {
 	testURIPath := "/foo/bar"
 
 	client := NewClient()
+	client.Logger = logger
 	client.RequestLogHook = func(logger Logger, req *http.Request, retry int) {
 		retries = retry
 
