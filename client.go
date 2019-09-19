@@ -463,7 +463,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 				c.RequestLogHook(v, req.Request, i)
 			case hclog.Logger:
 				c.RequestLogHook(hookLogger{v}, req.Request, i)
-			case nil:
+			default:
 				c.RequestLogHook(nil, req.Request, i)
 			}
 		}
@@ -494,7 +494,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 					c.ResponseLogHook(v, resp)
 				case hclog.Logger:
 					c.ResponseLogHook(hookLogger{v}, resp)
-				case nil:
+				default:
 					c.ResponseLogHook(nil, resp)
 				}
 			}
