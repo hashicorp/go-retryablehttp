@@ -47,6 +47,9 @@ var (
 	defaultRetryWaitMax = 30 * time.Second
 	defaultRetryMax     = 4
 
+	// defaultLogger is the logger provided with defaultClient
+	defaultLogger = log.New(os.Stderr, "", log.LstdFlags)
+
 	// defaultClient is used for performing requests without explicitly making
 	// a new client. It is purposely private to avoid modifications.
 	defaultClient = NewClient()
@@ -309,7 +312,7 @@ type Client struct {
 func NewClient() *Client {
 	return &Client{
 		HTTPClient:   cleanhttp.DefaultPooledClient(),
-		Logger:       log.New(os.Stderr, "", log.LstdFlags),
+		Logger:       defaultLogger,
 		RetryWaitMin: defaultRetryWaitMin,
 		RetryWaitMax: defaultRetryWaitMax,
 		RetryMax:     defaultRetryMax,
@@ -454,7 +457,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			}
 		}
 
-		if c.RequestLogHook != nil && logger != nil {
+		if c.RequestLogHook != nil {
 			switch v := logger.(type) {
 			case Logger:
 				c.RequestLogHook(v, req.Request, i)
@@ -474,27 +477,25 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		// Check if we should continue with retries.
 		checkOK, checkErr := c.CheckRetry(req.Context(), resp, err)
 
-		if logger != nil {
-			if err != nil {
+		if err != nil {
+			switch v := logger.(type) {
+			case Logger:
+				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
+			case hclog.Logger:
+				v.Error("request failed", "error", err, "method", req.Method, "url", req.URL)
+			}
+		} else {
+			// Call this here to maintain the behavior of logging all requests,
+			// even if CheckRetry signals to stop.
+			if c.ResponseLogHook != nil {
+				// Call the response logger function if provided.
 				switch v := logger.(type) {
 				case Logger:
-					v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
+					c.ResponseLogHook(v, resp)
 				case hclog.Logger:
-					v.Error("request failed", "error", err, "method", req.Method, "url", req.URL)
-				}
-			} else {
-				// Call this here to maintain the behavior of logging all requests,
-				// even if CheckRetry signals to stop.
-				if c.ResponseLogHook != nil {
-					// Call the response logger function if provided.
-					switch v := logger.(type) {
-					case Logger:
-						c.ResponseLogHook(v, resp)
-					case hclog.Logger:
-						c.ResponseLogHook(hookLogger{v}, resp)
-					default:
-						c.ResponseLogHook(nil, resp)
-					}
+					c.ResponseLogHook(hookLogger{v}, resp)
+				default:
+					c.ResponseLogHook(nil, resp)
 				}
 			}
 		}

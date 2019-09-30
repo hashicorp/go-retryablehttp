@@ -295,6 +295,15 @@ func TestClient_Get(t *testing.T) {
 }
 
 func TestClient_RequestLogHook(t *testing.T) {
+	t.Run("RequestLogHook successfully called with default Logger", func(t *testing.T) {
+		testClient_RequestLogHook(t, defaultLogger)
+	})
+	t.Run("RequestLogHook successfully called with nil Logger", func(t *testing.T) {
+		testClient_RequestLogHook(t, nil)
+	})
+}
+
+func testClient_RequestLogHook(t *testing.T, logger interface{}) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			t.Fatalf("bad method: %s", r.Method)
@@ -310,6 +319,7 @@ func TestClient_RequestLogHook(t *testing.T) {
 	testURIPath := "/foo/bar"
 
 	client := NewClient()
+	client.Logger = logger
 	client.RequestLogHook = func(logger Logger, req *http.Request, retry int) {
 		retries = retry
 
@@ -341,6 +351,20 @@ func TestClient_RequestLogHook(t *testing.T) {
 }
 
 func TestClient_ResponseLogHook(t *testing.T) {
+	t.Run("ResponseLogHook successfully called with hclog Logger", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+		l := hclog.New(&hclog.LoggerOptions{
+			Output: buf,
+		})
+		testClient_ResponseLogHook(t, l, buf)
+	})
+	t.Run("ResponseLogHook successfully called with nil Logger", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+		testClient_ResponseLogHook(t, nil, buf)
+	})
+}
+
+func testClient_ResponseLogHook(t *testing.T, l interface{}, buf *bytes.Buffer) {
 	passAfter := time.Now().Add(100 * time.Millisecond)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if time.Now().After(passAfter) {
@@ -353,13 +377,7 @@ func TestClient_ResponseLogHook(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	buf := new(bytes.Buffer)
-
 	client := NewClient()
-
-	l := hclog.New(&hclog.LoggerOptions{
-		Output: buf,
-	})
 
 	client.Logger = l
 	client.RetryWaitMin = 10 * time.Millisecond
@@ -367,15 +385,25 @@ func TestClient_ResponseLogHook(t *testing.T) {
 	client.RetryMax = 15
 	client.ResponseLogHook = func(logger Logger, resp *http.Response) {
 		if resp.StatusCode == 200 {
+			successLog := "test_log_pass"
 			// Log something when we get a 200
-			logger.Printf("test_log_pass")
+			if logger != nil {
+				logger.Printf(successLog)
+			} else {
+				buf.WriteString(successLog)
+			}
 		} else {
 			// Log the response body when we get a 500
 			body, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
-			logger.Printf("request", "body", string(body))
+			failLog := string(body)
+			if logger != nil {
+				logger.Printf(failLog)
+			} else {
+				buf.WriteString(failLog)
+			}
 		}
 	}
 
