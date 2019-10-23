@@ -1,0 +1,68 @@
+version: 2.1
+
+references:
+  images:
+    go: &GOLANG_IMAGE circleci/golang:1.12.4
+
+# reusable 'executor' object for jobs
+executors:
+  go:
+    docker:
+      - image: *GOLANG_IMAGE
+    environment:
+      - TEST_RESULTS: /tmp/test-results
+
+jobs:
+  go-fmt-and-vet:
+    executor: go
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - go-retryablehttp-modcache-v1-{{ checksum "go.mod" }}
+
+      - run: go mod download
+
+      - save_cache:
+          key: go-retryablehttp-modcache-v1-{{ checksum "go.mod" }}
+          paths:
+            - "/go/pkg/mod"
+
+      - run:
+          name: check go fmt
+          command: |
+            files=$(go fmt ./...)
+            if [ -n "$files" ]; then
+              echo "The following file(s) do not conform to go fmt:"
+              echo "$files"
+              exit 1
+            fi
+      - run: go vet ./...
+
+  go-test:
+    executor: go
+    steps:
+      - checkout
+      - run: mkdir -p $TEST_RESULTS
+
+      - restore_cache:
+          keys:
+            - go-retryablehttp-modcache-v1-{{ checksum "go.mod" }}
+
+      - run: |
+          trap "go-junit-report <${TEST_RESULTS}/go-test.out > ${TEST_RESULTS}/go-test-report.xml" EXIT
+          make updatedeps test | tee ${TEST_RESULTS}/go-test.out
+      - store_test_results:
+          path: *TEST_RESULTS_PATH
+      - store_artifacts:
+          path: *TEST_RESULTS_PATH
+
+workflows:
+  version: 2
+  test-and-build:
+    jobs:
+      - go-fmt-and-vet
+      - go-test:
+          requires:
+            - go-fmt-and-vet
