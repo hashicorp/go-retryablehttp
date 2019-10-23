@@ -2,7 +2,9 @@ version: 2.1
 
 references:
   images:
-    go: &GOLANG_IMAGE circleci/golang:1.12.4
+    go: &GOLANG_IMAGE circleci/golang:latest
+  environments:
+    tmp: &TEST_RESULTS_PATH /tmp/test-results # path to where test results are saved
 
 # reusable 'executor' object for jobs
 executors:
@@ -10,25 +12,28 @@ executors:
     docker:
       - image: *GOLANG_IMAGE
     environment:
-      - TEST_RESULTS: /tmp/test-results
+      - TEST_RESULTS: *TEST_RESULTS_PATH
 
 jobs:
-  go-fmt-and-vet:
+  go-test:
     executor: go
     steps:
       - checkout
+      - run: mkdir -p $TEST_RESULTS
 
-      - restore_cache:
+      - restore_cache: # restore cache from dev-build job
           keys:
             - go-retryablehttp-modcache-v1-{{ checksum "go.mod" }}
 
       - run: go mod download
 
+      # Save go module cache if the go.mod file has changed
       - save_cache:
           key: go-retryablehttp-modcache-v1-{{ checksum "go.mod" }}
           paths:
             - "/go/pkg/mod"
 
+      # check go fmt output because it does not report non-zero when there are fmt changes
       - run:
           name: check go fmt
           command: |
@@ -38,21 +43,10 @@ jobs:
               echo "$files"
               exit 1
             fi
-      - run: go vet ./...
-
-  go-test:
-    executor: go
-    steps:
-      - checkout
-      - run: mkdir -p $TEST_RESULTS
-
-      - restore_cache:
-          keys:
-            - go-retryablehttp-modcache-v1-{{ checksum "go.mod" }}
-
+      # run go tests with gotestsum
       - run: |
-          trap "go-junit-report <${TEST_RESULTS}/go-test.out > ${TEST_RESULTS}/go-test-report.xml" EXIT
-          make updatedeps test | tee ${TEST_RESULTS}/go-test.out
+          PACKAGE_NAMES=$(go list ./...)
+          gotestsum --format=short-verbose --junitfile $TEST_RESULTS/gotestsum-report.xml -- $PACKAGE_NAMES
       - store_test_results:
           path: *TEST_RESULTS_PATH
       - store_artifacts:
@@ -62,7 +56,4 @@ workflows:
   version: 2
   test-and-build:
     jobs:
-      - go-fmt-and-vet
-      - go-test:
-          requires:
-            - go-fmt-and-vet
+      - go-test
