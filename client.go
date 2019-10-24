@@ -24,6 +24,7 @@ package retryablehttp
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -347,8 +348,18 @@ func DefaultRetryPolicy(ctx context.Context, resp *http.Response, err error) (bo
 	}
 
 	if err != nil {
+		// Check if the error was due to an unverifiable TLS certificate. In
+		// that case, it is highly unlikely that this would be addressed within
+		// the timeframe of the retries, so don't retry.
+		if v, ok := err.(*url.Error); ok {
+			if _, ok := v.Err.(x509.UnknownAuthorityError); ok {
+				return false, nil
+			}
+		}
+
 		return true, err
 	}
+
 	// Check the response code. We retry on 500-range responses to allow
 	// the server time to recover, as 500's are typically not permanent
 	// errors and may relate to outages on the server side. This will catch
