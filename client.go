@@ -354,13 +354,13 @@ func DefaultRetryPolicy(ctx context.Context, resp *http.Response, err error) (bo
 	}
 
 	if err != nil {
-		// Don't retry if the error was due to too many redirects.
-		if redirectsErrorRe.MatchString(err.Error()) {
-			return false, nil
-		}
-
-		// Don't retry if the error was due to TLS cert verification failure.
 		if v, ok := err.(*url.Error); ok {
+			// Don't retry if the error was due to too many redirects.
+			if redirectsErrorRe.MatchString(v.Error()) {
+				return false, nil
+			}
+
+			// Don't retry if the error was due to TLS cert verification failure.
 			if _, ok := v.Err.(x509.UnknownAuthorityError); ok {
 				return false, nil
 			}
