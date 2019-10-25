@@ -472,10 +472,10 @@ func TestClient_CheckRetry(t *testing.T) {
 }
 
 func TestClient_DefaultRetryPolicy_TLS(t *testing.T) {
-	tsTLS := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 	}))
-	defer tsTLS.Close()
+	defer ts.Close()
 
 	attempts := 0
 	client := NewClient()
@@ -484,9 +484,31 @@ func TestClient_DefaultRetryPolicy_TLS(t *testing.T) {
 		return DefaultRetryPolicy(context.TODO(), resp, err)
 	}
 
-	_, err := client.Get(tsTLS.URL)
+	_, err := client.Get(ts.URL)
 	if err == nil {
 		t.Fatalf("expected x509 error, got nil")
+	}
+	if attempts != 1 {
+		t.Fatalf("expected 1 attempt, got %d", attempts)
+	}
+}
+
+func TestClient_DefaultRetryPolicy_redirects(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/", 302)
+	}))
+	defer ts.Close()
+
+	attempts := 0
+	client := NewClient()
+	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
+		attempts++
+		return DefaultRetryPolicy(context.TODO(), resp, err)
+	}
+
+	_, err := client.Get(ts.URL)
+	if err == nil {
+		t.Fatalf("expected redirect error, got nil")
 	}
 	if attempts != 1 {
 		t.Fatalf("expected 1 attempt, got %d", attempts)

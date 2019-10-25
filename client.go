@@ -34,6 +34,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -55,6 +56,11 @@ var (
 	// We need to consume response bodies to maintain http connections, but
 	// limit the size we consume to respReadLimit.
 	respReadLimit = int64(4096)
+
+	// A regular expression to match the error returned by net/http when the
+	// configured number of redirects is exhausted. This error isn't typed
+	// specifically so we resort to matching on the error string.
+	redirectsErrorRe = regexp.MustCompile(`stopped after \d+ redirects\z`)
 )
 
 // ReaderFunc is the type of function that can be given natively to NewRequest
@@ -348,16 +354,20 @@ func DefaultRetryPolicy(ctx context.Context, resp *http.Response, err error) (bo
 	}
 
 	if err != nil {
-		// Check if the error was due to an unverifiable TLS certificate. In
-		// that case, it is highly unlikely that this would be addressed within
-		// the timeframe of the retries, so don't retry.
+		// Don't retry if the error was due to too many redirects.
+		if redirectsErrorRe.MatchString(err.Error()) {
+			return false, nil
+		}
+
+		// Don't retry if the error was due to TLS cert verification failure.
 		if v, ok := err.(*url.Error); ok {
 			if _, ok := v.Err.(x509.UnknownAuthorityError); ok {
 				return false, nil
 			}
 		}
 
-		return true, err
+		// The error is likely recoverable so retry.
+		return true, nil
 	}
 
 	// Check the response code. We retry on 500-range responses to allow
