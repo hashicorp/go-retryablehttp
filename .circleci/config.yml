@@ -5,26 +5,24 @@ commands:
     parameters:
       path:
         type: string
-        default: "/tmp/test-results"
+        default: /tmp/test-results
     steps:
       - run: echo << parameters.path >>
   store_results:
     parameters:
       path:
         type: string
-        default: "/tmp/test-results"
+        default: /tmp/test-results
     steps:
       - store_test_results:
           path: << parameters.path >>
       - store_artifacts:
           path: << parameters.path >>
 
-# reusable 'executor' object for jobs
 executors:
   go:
-    shell: /usr/bin/env bash -euo pipefail -c 
-    docker:
-      - image: circleci/golang:1.13.3
+    docker:
+      - image: circleci/golang:1.13.3
 
 jobs:
   go-test:
@@ -66,4 +64,3 @@ workflows:
   test-and-build:
     jobs:
       - go-test
-
