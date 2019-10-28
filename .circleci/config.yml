@@ -1,33 +1,45 @@
 version: 2.1
 
-references:
-  images:
-    go: &GOLANG_IMAGE circleci/golang:latest
-  environments:
-    tmp: &TEST_RESULTS_PATH /tmp/test-results # path to where test results are saved
+commands:
+  get_test_results_path:
+    parameters:
+      path:
+        type: string
+        default: "/tmp/test-results"
+    steps:
+      - run: echo << parameters.path >>
+  store_results:
+    parameters:
+      path:
+        type: string
+        default: "/tmp/test-results"
+    steps:
+      - store_test_results:
+          path: << parameters.path >>
+      - store_artifacts:
+          path: << parameters.path >>
 
 # reusable 'executor' object for jobs
 executors:
   go:
-    docker:
-      - image: *GOLANG_IMAGE
-    environment:
-      - TEST_RESULTS: *TEST_RESULTS_PATH
+    shell: /usr/bin/env bash -euo pipefail -c 
+    docker:
+      - image: circleci/golang:1.13.3
 
 jobs:
   go-test:
     executor: go
     steps:
       - checkout
-      - run: mkdir -p $TEST_RESULTS
+      - run: mkdir -p get_test_results_path
 
-      - restore_cache: # restore cache from dev-build job
+      - restore_cache: # restore cache if it exists
           keys:
             - go-retryablehttp-modcache-v1-{{ checksum "go.mod" }}
 
       - run: go mod download
 
-      # Save go module cache if the go.mod file has changed
+      # save go module cache if the go.mod file has changed
       - save_cache:
           key: go-retryablehttp-modcache-v1-{{ checksum "go.mod" }}
           paths:
@@ -46,14 +58,11 @@ jobs:
       # run go tests with gotestsum
       - run: |
           PACKAGE_NAMES=$(go list ./...)
-          gotestsum --format=short-verbose --junitfile $TEST_RESULTS/gotestsum-report.xml -- $PACKAGE_NAMES
-      - store_test_results:
-          path: *TEST_RESULTS_PATH
-      - store_artifacts:
-          path: *TEST_RESULTS_PATH
+          gotestsum --format=short-verbose --junitfile get_test_results_path/gotestsum-report.xml -- $PACKAGE_NAMES
+
+      - run: store_results
 
 workflows:
-  version: 2
   test-and-build:
     jobs:
       - go-test
