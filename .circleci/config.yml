@@ -23,6 +23,7 @@ executors:
   go:
     docker:
       - image: circleci/golang:1.13.3
+    shell: /usr/bin/env bash -euo pipefail -c
 
 jobs:
   go-test:
