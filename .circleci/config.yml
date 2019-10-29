@@ -1,18 +1,10 @@
 version: 2.1
 
 commands:
-  get_test_results_path:
-    parameters:
-      path:
-        type: string
-        default: /tmp/test-results
-    steps:
-      - run: echo << parameters.path >>
   store_results:
     parameters:
       path:
         type: string
-        default: /tmp/test-results
     steps:
       - store_test_results:
           path: << parameters.path >>
@@ -24,13 +16,15 @@ executors:
     docker:
       - image: circleci/golang:1.13.3
     shell: /usr/bin/env bash -euo pipefail -c
+    environment:
+      TEST_RESULTS: /tmp/test-results
 
 jobs:
   go-test:
     executor: go
     steps:
       - checkout
-      - run: mkdir -p get_test_results_path
+      - run: mkdir -p $TEST_RESULTS
 
       - restore_cache: # restore cache if it exists
           keys:
@@ -57,9 +51,9 @@ jobs:
       # run go tests with gotestsum
       - run: |
           PACKAGE_NAMES=$(go list ./...)
-          gotestsum --format=short-verbose --junitfile get_test_results_path/gotestsum-report.xml -- $PACKAGE_NAMES
-
-      - run: store_results
+          gotestsum --format=short-verbose --junitfile $TEST_RESULTS/gotestsum-report.xml -- $PACKAGE_NAMES
+      - store_results:
+          path: $TEST_RESULTS
 
 workflows:
   test-and-build:
