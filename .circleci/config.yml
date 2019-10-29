@@ -27,6 +27,7 @@ jobs:
     executor: go
     steps:
       - checkout
+
       - run: mkdir -p $TEST_RESULTS
 
       - restore_cache: # restore cache if it exists
@@ -41,7 +42,8 @@ jobs:
           paths:
             - "/go/pkg/mod"
 
-      # check go fmt output because it does not report non-zero when there are fmt changes
+      # check go fmt output because it does not report
+      # non-zero when there are fmt changes
       - run:
           name: check go fmt
           command: |
@@ -51,6 +53,7 @@ jobs:
               echo "$files"
               exit 1
             fi
+
       # run go tests with gotestsum
       - run:
           name: Run tests
@@ -58,7 +61,7 @@ jobs:
             PACKAGE_NAMES=$(go list ./...)
             gotestsum --format=short-verbose \
               --junitfile $TEST_RESULTS/gotestsum-report.xml -- $PACKAGE_NAMES
-      - store_results:
+      - store_results:
           path: $TEST_RESULTS
 
 workflows:
