@@ -240,14 +240,22 @@ type Logger interface {
 	Printf(string, ...interface{})
 }
 
-// To adapt an hclog.Logger to Logger for use by the existing hook functions
-// without changing the API.
-type hookLogger struct {
-	logger hclog.Logger
+// ExtendedLogger interface implements the basic methods that a logger library needs
+type ExtendedLogger interface {
+	Error(string, ...interface{})
+	Info(string, ...interface{})
+	Debug(string, ...interface{})
+	Warn(string, ...interface{})
 }
 
-func (h hookLogger) Printf(s string, args ...interface{}) {
-	h.logger.Info(fmt.Sprintf(s, args...))
+// HookLogger adapts an ExtendedLogger to Logger for use by the existing hook functions
+// without changing the API.
+type HookLogger struct {
+	ExtendedLogger
+}
+
+func (h HookLogger) Printf(s string, args ...interface{}) {
+	h.Info(fmt.Sprintf(s, args...))
 }
 
 // RequestLogHook allows a function to run before each retry. The HTTP
@@ -335,9 +343,7 @@ func (c *Client) logger() interface{} {
 		}
 
 		switch c.Logger.(type) {
-		case Logger:
-			// ok
-		case hclog.Logger:
+		case Logger, ExtendedLogger:
 			// ok
 		default:
 			// This should happen in dev when they are setting Logger and work on code, not in prod.
@@ -453,7 +459,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		switch v := logger.(type) {
 		case Logger:
 			v.Printf("[DEBUG] %s %s", req.Method, req.URL)
-		case hclog.Logger:
+		case ExtendedLogger:
 			v.Debug("performing request", "method", req.Method, "url", req.URL)
 		}
 	}
@@ -483,7 +489,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			case Logger:
 				c.RequestLogHook(v, req.Request, i)
 			case hclog.Logger:
-				c.RequestLogHook(hookLogger{v}, req.Request, i)
+				c.RequestLogHook(HookLogger{v}, req.Request, i)
 			default:
 				c.RequestLogHook(nil, req.Request, i)
 			}
@@ -502,7 +508,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			switch v := logger.(type) {
 			case Logger:
 				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
-			case hclog.Logger:
+			case ExtendedLogger:
 				v.Error("request failed", "error", err, "method", req.Method, "url", req.URL)
 			}
 		} else {
@@ -513,8 +519,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 				switch v := logger.(type) {
 				case Logger:
 					c.ResponseLogHook(v, resp)
-				case hclog.Logger:
-					c.ResponseLogHook(hookLogger{v}, resp)
+				case ExtendedLogger:
+					c.ResponseLogHook(HookLogger{v}, resp)
 				default:
 					c.ResponseLogHook(nil, resp)
 				}
