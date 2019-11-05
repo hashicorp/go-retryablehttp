@@ -543,6 +543,29 @@ func TestClient_DefaultRetryPolicy_redirects(t *testing.T) {
 	}
 }
 
+func TestClient_DefaultRetryPolicy_invalidscheme(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	attempts := 0
+	client := NewClient()
+	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
+		attempts++
+		return DefaultRetryPolicy(context.TODO(), resp, err)
+	}
+
+	url := strings.Replace(ts.URL, "http", "ftp", 1)
+	_, err := client.Get(url)
+	if err == nil {
+		t.Fatalf("expected scheme error, got nil")
+	}
+	if attempts != 1 {
+		t.Fatalf("expected 1 attempt, got %d", attempts)
+	}
+}
+
 func TestClient_CheckRetryStop(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "test_500_body", http.StatusInternalServerError)
