@@ -39,8 +39,7 @@ import (
 	"sync"
 	"time"
 
-	cleanhttp "github.com/hashicorp/go-cleanhttp"
-	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/go-cleanhttp"
 )
 
 var (
@@ -240,21 +239,21 @@ type Logger interface {
 	Printf(string, ...interface{})
 }
 
-// ExtendedLogger interface implements the basic methods that a logger library needs
-type ExtendedLogger interface {
+// LeveledLogger interface implements the basic methods that a logger library needs
+type LeveledLogger interface {
 	Error(string, ...interface{})
 	Info(string, ...interface{})
 	Debug(string, ...interface{})
 	Warn(string, ...interface{})
 }
 
-// HookLogger adapts an ExtendedLogger to Logger for use by the existing hook functions
+// hookLogger adapts an LeveledLogger to Logger for use by the existing hook functions
 // without changing the API.
-type HookLogger struct {
-	ExtendedLogger
+type hookLogger struct {
+	LeveledLogger
 }
 
-func (h HookLogger) Printf(s string, args ...interface{}) {
+func (h hookLogger) Printf(s string, args ...interface{}) {
 	h.Info(fmt.Sprintf(s, args...))
 }
 
@@ -296,7 +295,7 @@ type ErrorHandler func(resp *http.Response, err error, numTries int) (*http.Resp
 // like automatic retries to tolerate minor outages.
 type Client struct {
 	HTTPClient *http.Client // Internal HTTP client.
-	Logger     interface{}  // Customer logger instance. Can be either Logger or hclog.Logger
+	Logger     interface{}  // Customer logger instance. Can be either Logger or LeveledLogger
 
 	RetryWaitMin time.Duration // Minimum time to wait
 	RetryWaitMax time.Duration // Maximum time to wait
@@ -343,11 +342,11 @@ func (c *Client) logger() interface{} {
 		}
 
 		switch c.Logger.(type) {
-		case Logger, ExtendedLogger:
+		case Logger, LeveledLogger:
 			// ok
 		default:
 			// This should happen in dev when they are setting Logger and work on code, not in prod.
-			panic(fmt.Sprintf("invalid logger type passed, must be Logger or hclog.Logger, was %T", c.Logger))
+			panic(fmt.Sprintf("invalid logger type passed, must be Logger or LeveledLogger, was %T", c.Logger))
 		}
 	})
 
@@ -459,7 +458,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		switch v := logger.(type) {
 		case Logger:
 			v.Printf("[DEBUG] %s %s", req.Method, req.URL)
-		case ExtendedLogger:
+		case LeveledLogger:
 			v.Debug("performing request", "method", req.Method, "url", req.URL)
 		}
 	}
@@ -488,8 +487,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			switch v := logger.(type) {
 			case Logger:
 				c.RequestLogHook(v, req.Request, i)
-			case hclog.Logger:
-				c.RequestLogHook(HookLogger{v}, req.Request, i)
+			case LeveledLogger:
+				c.RequestLogHook(hookLogger{v}, req.Request, i)
 			default:
 				c.RequestLogHook(nil, req.Request, i)
 			}
@@ -508,7 +507,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			switch v := logger.(type) {
 			case Logger:
 				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
-			case ExtendedLogger:
+			case LeveledLogger:
 				v.Error("request failed", "error", err, "method", req.Method, "url", req.URL)
 			}
 		} else {
@@ -519,8 +518,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 				switch v := logger.(type) {
 				case Logger:
 					c.ResponseLogHook(v, resp)
-				case ExtendedLogger:
-					c.ResponseLogHook(HookLogger{v}, resp)
+				case LeveledLogger:
+					c.ResponseLogHook(hookLogger{v}, resp)
 				default:
 					c.ResponseLogHook(nil, resp)
 				}
@@ -557,7 +556,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			switch v := logger.(type) {
 			case Logger:
 				v.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
-			case hclog.Logger:
+			case LeveledLogger:
 				v.Debug("retrying request", "request", desc, "timeout", wait, "remaining", remain)
 			}
 		}
@@ -593,7 +592,7 @@ func (c *Client) drainBody(body io.ReadCloser) {
 			switch v := c.logger().(type) {
 			case Logger:
 				v.Printf("[ERR] error reading response body: %v", err)
-			case hclog.Logger:
+			case LeveledLogger:
 				v.Error("error reading response body", "error", err)
 			}
 		}
