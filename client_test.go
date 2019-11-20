@@ -584,7 +584,7 @@ func TestClient_CheckRetryStop(t *testing.T) {
 	_, err := client.Get(ts.URL)
 
 	if called != 1 {
-		t.Fatalf("CheckRetry called %d times, expeted 1", called)
+		t.Fatalf("CheckRetry called %d times, expected 1", called)
 	}
 
 	if err != nil {

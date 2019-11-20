@@ -410,7 +410,7 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 // perform linear backoff based on the attempt number and with jitter to
 // prevent a thundering herd.
 //
-// min and max here are *not* absolute values. The number to be multipled by
+// min and max here are *not* absolute values. The number to be multiplied by
 // the attempt number will be chosen at random from between them, thus they are
 // bounding the jitter.
 //
@@ -540,7 +540,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			return resp, err
 		}
 
-		// We do this before drainBody beause there's no need for the I/O if
+		// We do this before drainBody because there's no need for the I/O if
 		// we're breaking out
 		remain := c.RetryMax - i
 		if remain <= 0 {
