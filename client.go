@@ -1,4 +1,4 @@
-// The retryablehttp package provides a familiar HTTP client interface with
+// Package retryablehttp provides a familiar HTTP client interface with
 // automatic retries and exponential backoff. It is a thin wrapper over the
 // standard net/http client library and exposes nearly the same public API.
 // This makes retryablehttp very easy to drop into existing programs.
