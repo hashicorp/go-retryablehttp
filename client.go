@@ -46,7 +46,7 @@ var (
 	// Default retry configuration
 	defaultRetryWaitMin = 1 * time.Second
 	defaultRetryWaitMax = 30 * time.Second
-	defaultTotalWaitMax = 60 * time.Second
+	defaultTotalWaitMax = 180 * time.Second
 	defaultRetryMax     = 4
 
 	// defaultLogger is the logger provided with defaultClient
