@@ -46,6 +46,7 @@ var (
 	// Default retry configuration
 	defaultRetryWaitMin = 1 * time.Second
 	defaultRetryWaitMax = 30 * time.Second
+	defaultTotalWaitMax = 60 * time.Second
 	defaultRetryMax     = 4
 
 	// defaultLogger is the logger provided with defaultClient
@@ -304,6 +305,7 @@ type Client struct {
 
 	RetryWaitMin time.Duration // Minimum time to wait
 	RetryWaitMax time.Duration // Maximum time to wait
+	TotalWaitMax time.Duration // Maximum total time to keep issuing retries
 	RetryMax     int           // Maximum number of retries
 
 	// RequestLogHook allows a user-supplied function to be called
@@ -334,6 +336,7 @@ func NewClient() *Client {
 		Logger:       defaultLogger,
 		RetryWaitMin: defaultRetryWaitMin,
 		RetryWaitMax: defaultRetryWaitMax,
+		TotalWaitMax: defaultTotalWaitMax,
 		RetryMax:     defaultRetryMax,
 		CheckRetry:   DefaultRetryPolicy,
 		Backoff:      DefaultBackoff,
@@ -475,7 +478,10 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 	var resp *http.Response
 	var err error
+	var maxTotalTimer = time.NewTimer(c.TotalWaitMax)
+	defer maxTotalTimer.Stop()
 
+forLoop:
 	for i := 0; ; i++ {
 		var code int // HTTP response code
 
@@ -574,6 +580,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		case <-req.Context().Done():
 			c.HTTPClient.CloseIdleConnections()
 			return nil, req.Context().Err()
+		case <-maxTotalTimer.C:
+			err = fmt.Errorf("total wait time (%v) exceeded", c.TotalWaitMax)
+			break forLoop
 		case <-time.After(wait):
 		}
 	}
