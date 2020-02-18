@@ -2,6 +2,10 @@ package retryablehttp
 
 import "net/http"
 
+func NewHTTPClient() RetryingHTTPClient {
+	return RetryingHTTPClient{NewClient()}
+}
+
 type RetryingHTTPClient struct {
 	*Client
 }

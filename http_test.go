@@ -86,9 +86,9 @@ func TestRetryingHTTPClient_Do(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			c := &RetryingHTTPClient{
-				Client: tt.fields.Client,
-			}
+			c := NewHTTPClient()
+			c.Client = tt.fields.Client
+
 			_, err := c.Do(tt.args.req)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Do() error = %v, wantErr %v", err, tt.wantErr)
