@@ -478,10 +478,12 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 	var resp *http.Response
 	var err error
-	var maxTotalTimer = time.NewTimer(c.TotalWaitMax)
-	defer maxTotalTimer.Stop()
 
-forLoop:
+	ctx, cancel := context.WithTimeout(req.Context(), c.TotalWaitMax)
+	defer cancel()
+
+	req.Request = req.Request.WithContext(ctx)
+
 	for i := 0; ; i++ {
 		var code int // HTTP response code
 
@@ -579,10 +581,9 @@ forLoop:
 		select {
 		case <-req.Context().Done():
 			c.HTTPClient.CloseIdleConnections()
-			return nil, req.Context().Err()
-		case <-maxTotalTimer.C:
-			err = fmt.Errorf("total wait time (%v) exceeded", c.TotalWaitMax)
-			break forLoop
+			if c.ErrorHandler != nil {
+				return c.ErrorHandler(resp, req.Context().Err(), c.RetryMax+1)
+			}
 		case <-time.After(wait):
 		}
 	}
