@@ -119,6 +119,19 @@ func (r *Request) BodyBytes() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// SetBody allows setting the request body.
+//
+// It is useful if a new body needs to be set without constructing a new Request.
+func (r *Request) SetBody(rawBody interface{}) error {
+	bodyReader, contentLength, err := getBodyReaderAndContentLength(rawBody)
+	if err != nil {
+		return err
+	}
+	r.body = bodyReader
+	r.ContentLength = contentLength
+	return nil
+}
+
 func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, error) {
 	var bodyReader ReaderFunc
 	var contentLength int64
