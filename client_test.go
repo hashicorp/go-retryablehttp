@@ -110,26 +110,26 @@ func (c *custReader) Read(p []byte) (n int, err error) {
 func TestClient_Do(t *testing.T) {
 	testBytes := []byte("hello")
 	// Native func
-	testClient_Do(t, ReaderFunc(func() (io.Reader, error) {
+	testClientDo(t, ReaderFunc(func() (io.Reader, error) {
 		return bytes.NewReader(testBytes), nil
 	}))
 	// Native func, different Go type
-	testClient_Do(t, func() (io.Reader, error) {
+	testClientDo(t, func() (io.Reader, error) {
 		return bytes.NewReader(testBytes), nil
 	})
 	// []byte
-	testClient_Do(t, testBytes)
+	testClientDo(t, testBytes)
 	// *bytes.Buffer
-	testClient_Do(t, bytes.NewBuffer(testBytes))
+	testClientDo(t, bytes.NewBuffer(testBytes))
 	// *bytes.Reader
-	testClient_Do(t, bytes.NewReader(testBytes))
+	testClientDo(t, bytes.NewReader(testBytes))
 	// io.ReadSeeker
-	testClient_Do(t, strings.NewReader(string(testBytes)))
+	testClientDo(t, strings.NewReader(string(testBytes)))
 	// io.Reader
-	testClient_Do(t, &custReader{})
+	testClientDo(t, &custReader{})
 }
 
-func testClient_Do(t *testing.T, body interface{}) {
+func testClientDo(t *testing.T, body interface{}) {
 	// Create a request
 	req, err := NewRequest("PUT", "http://127.0.0.1:28934/v1/foo", body)
 	if err != nil {
@@ -296,14 +296,14 @@ func TestClient_Get(t *testing.T) {
 
 func TestClient_RequestLogHook(t *testing.T) {
 	t.Run("RequestLogHook successfully called with default Logger", func(t *testing.T) {
-		testClient_RequestLogHook(t, defaultLogger)
+		testClientRequestLogHook(t, defaultLogger)
 	})
 	t.Run("RequestLogHook successfully called with nil Logger", func(t *testing.T) {
-		testClient_RequestLogHook(t, nil)
+		testClientRequestLogHook(t, nil)
 	})
 }
 
-func testClient_RequestLogHook(t *testing.T, logger interface{}) {
+func testClientRequestLogHook(t *testing.T, logger interface{}) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			t.Fatalf("bad method: %s", r.Method)
@@ -356,15 +356,15 @@ func TestClient_ResponseLogHook(t *testing.T) {
 		l := hclog.New(&hclog.LoggerOptions{
 			Output: buf,
 		})
-		testClient_ResponseLogHook(t, l, buf)
+		testClientResponseLogHook(t, l, buf)
 	})
 	t.Run("ResponseLogHook successfully called with nil Logger", func(t *testing.T) {
 		buf := new(bytes.Buffer)
-		testClient_ResponseLogHook(t, nil, buf)
+		testClientResponseLogHook(t, nil, buf)
 	})
 }
 
-func testClient_ResponseLogHook(t *testing.T, l interface{}, buf *bytes.Buffer) {
+func testClientResponseLogHook(t *testing.T, l interface{}, buf *bytes.Buffer) {
 	passAfter := time.Now().Add(100 * time.Millisecond)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if time.Now().After(passAfter) {
@@ -584,7 +584,7 @@ func TestClient_CheckRetryStop(t *testing.T) {
 	_, err := client.Get(ts.URL)
 
 	if called != 1 {
-		t.Fatalf("CheckRetry called %d times, expeted 1", called)
+		t.Fatalf("CheckRetry called %d times, expected 1", called)
 	}
 
 	if err != nil {
