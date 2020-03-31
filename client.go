@@ -132,6 +132,23 @@ func (r *Request) SetBody(rawBody interface{}) error {
 	return nil
 }
 
+// WriteTo allows copying the request body into a writer.
+//
+// It writes data to w until there's no more data to write or
+// when an error occurs. The return int64 value is the number of bytes
+// written. Any error encountered during the write is also returned.
+// The signature matches io.WriterTo interface.
+func (r *Request) WriteTo(w io.Writer) (int64, error) {
+	body, err := r.body()
+	if err != nil {
+		return 0, err
+	}
+	if c, ok := body.(io.Closer); ok {
+		defer c.Close()
+	}
+	return io.Copy(w, body)
+}
+
 func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, error) {
 	var bodyReader ReaderFunc
 	var contentLength int64
