@@ -10,7 +10,6 @@ import (
 )
 
 func TestRetryingHTTPClient_Do(t *testing.T) {
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			t.Fatalf("bad method: %s", r.Method)
@@ -29,27 +28,16 @@ func TestRetryingHTTPClient_Do(t *testing.T) {
 	}))
 	defer server.Close()
 
-	type fields struct {
-		Client *Client
-	}
 	type args struct {
 		req *http.Request
 	}
 	tests := []struct {
 		name    string
-		fields  fields
 		args    args
 		wantErr bool
 	}{
 		{
 			name: "Happy path",
-			fields: fields{
-				Client: func() *Client {
-					c := NewClient()
-					c.HTTPClient = server.Client()
-					return c
-				}(),
-			},
 			args: args{
 				req: func() *http.Request {
 					request, err := http.NewRequest(http.MethodPost, server.URL, strings.NewReader("Hello world"))
@@ -63,13 +51,6 @@ func TestRetryingHTTPClient_Do(t *testing.T) {
 		},
 		{
 			name: "FromRequest errors",
-			fields: fields{
-				Client: func() *Client {
-					c := NewClient()
-					c.HTTPClient = server.Client()
-					return c
-				}(),
-			},
 			args: args{
 				req: func() *http.Request {
 					request, err := http.NewRequest(http.MethodPost, server.URL, ErrReader{})
@@ -87,7 +68,6 @@ func TestRetryingHTTPClient_Do(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			c := NewCompatClient()
-			c.Client = tt.fields.Client
 
 			_, err := c.Do(tt.args.req)
 			if (err != nil) != tt.wantErr {
