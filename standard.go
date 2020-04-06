@@ -3,8 +3,8 @@ package retryablehttp
 import "net/http"
 
 // NewStandardClient creates a new StandardClient with a Client with default settings.
-func NewStandardClient() StandardClient {
-	return StandardClient{NewClient()}
+func NewStandardClient() *StandardClient {
+	return &StandardClient{NewClient()}
 }
 
 // StandardClient is a thin wrapper around Client to fulfill the Do function signature of http.Client
