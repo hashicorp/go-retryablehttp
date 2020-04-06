@@ -11,57 +11,56 @@ import (
 
 func TestStandardClient_Do(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			t.Fatalf("bad method: %s", r.Method)
+		if r.Method != http.MethodPost {
+			t.Logf("bad method: %s", r.Method)
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
 		}
 
 		bytes, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			t.Fatalf("bad body: %s", r.Body)
+			t.Logf("bad body: %s, err: %s", r.Body, err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
 
 		if string(bytes) != "Hello world" {
-			t.Fatalf("bad body: %s", r.Body)
+			t.Logf("bad body: %s", r.Body)
+			w.WriteHeader(http.StatusNotAcceptable)
+			return
 		}
 
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusCreated)
 	}))
 	defer server.Close()
 
-	type args struct {
-		req *http.Request
-	}
 	tests := []struct {
 		name    string
-		args    args
-		wantErr bool
+		req     *http.Request
+		wantErr string
 	}{
 		{
 			name: "Happy path",
-			args: args{
-				req: func() *http.Request {
-					request, err := http.NewRequest(http.MethodPost, server.URL, strings.NewReader("Hello world"))
-					if err != nil {
-						t.Fatalf("could create new request, %s", err)
-					}
+			req: func() *http.Request {
+				request, err := http.NewRequest(http.MethodPost, server.URL, strings.NewReader("Hello world"))
+				if err != nil {
+					t.Fatalf("unable to create request, %s", err)
+				}
 
-					return request
-				}(),
-			},
+				return request
+			}(),
 		},
 		{
 			name: "FromRequest errors",
-			args: args{
-				req: func() *http.Request {
-					request, err := http.NewRequest(http.MethodPost, server.URL, ErrReader{})
-					if err != nil {
-						t.Fatalf("could create new request, %s", err)
-					}
+			req: func() *http.Request {
+				request, err := http.NewRequest(http.MethodPost, server.URL, ErrReader{})
+				if err != nil {
+					t.Fatalf("unable to create request, %s", err)
+				}
 
-					return request
-				}(),
-			},
-			wantErr: true,
+				return request
+			}(),
+			wantErr: "an error",
 		},
 	}
 	for _, tt := range tests {
@@ -69,10 +68,13 @@ func TestStandardClient_Do(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := NewStandardClient()
 
-			_, err := c.Do(tt.args.req)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Do() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			got, err := c.Do(tt.req)
+			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+				t.Fatalf("Do() error = %v, wantErr = %v", err, tt.wantErr)
+			}
+
+			if got.StatusCode != http.StatusCreated {
+				t.Fatalf("Do() statuscode = %d, want = %d", got.StatusCode, http.StatusCreated)
 			}
 		})
 	}
