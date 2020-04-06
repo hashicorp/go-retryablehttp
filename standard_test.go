@@ -69,12 +69,16 @@ func TestStandardClient_Do(t *testing.T) {
 			c := NewStandardClient()
 
 			got, err := c.Do(tt.req)
-			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+			if (tt.wantErr != "" && err == nil) ||
+				(tt.wantErr == "" && err != nil) ||
+				(tt.wantErr != "" && !strings.Contains(err.Error(), tt.wantErr)) {
 				t.Fatalf("Do() error = %v, wantErr = %v", err, tt.wantErr)
+				return
 			}
 
-			if got.StatusCode != http.StatusCreated {
+			if tt.wantErr == "" && got.StatusCode != http.StatusCreated {
 				t.Fatalf("Do() statuscode = %d, want = %d", got.StatusCode, http.StatusCreated)
+				return
 			}
 		})
 	}
