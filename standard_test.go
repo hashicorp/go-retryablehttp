@@ -68,13 +68,14 @@ func TestStandardClient_Do(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := NewStandardClient()
 
-			got, err := c.Do(tt.req)
-			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
-				t.Fatalf("Do() error = %v, wantErr = %v", err, tt.wantErr)
+			got, gotErr := c.Do(tt.req)
+
+			if tt.wantErr != "" && (gotErr == nil || !strings.Contains(gotErr.Error(), tt.wantErr)) {
+				t.Fatalf("Do() error = %v, wantErr = %v", gotErr, tt.wantErr)
 			}
 
-			if tt.wantErr == "" && err != nil {
-				t.Fatalf("Do() error = %v, expected no error", err)
+			if tt.wantErr == "" && gotErr != nil {
+				t.Fatalf("Do() error = %v, expected no error", gotErr)
 			}
 
 			if tt.wantErr == "" && got.StatusCode != http.StatusCreated {
