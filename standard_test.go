@@ -79,7 +79,7 @@ func TestStandardClient_Do(t *testing.T) {
 			}
 
 			if tt.wantErr == "" && got.StatusCode != http.StatusCreated {
-				t.Fatalf("Do() statuscode = %d, want = %d", got.StatusCode, http.StatusCreated)
+				t.Fatalf("Do() statusCode = %d, want = %d", got.StatusCode, http.StatusCreated)
 			}
 		})
 	}
