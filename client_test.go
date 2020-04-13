@@ -773,3 +773,16 @@ func TestClient_BackoffCustom(t *testing.T) {
 		t.Fatalf("expected retries: %d != %d", client.RetryMax, retries)
 	}
 }
+
+func TestClient_StandardClient(t *testing.T) {
+	// Create a retryable HTTP client.
+	client := NewClient()
+
+	// Get a standard client.
+	standard := client.StandardClient()
+
+	// Ensure the underlying retrying client is set properly.
+	if v := standard.Transport.(*RoundTripper).Client; v != client {
+		t.Fatalf("expected %v, got %v", client, v)
+	}
+}
