@@ -695,3 +695,11 @@ func PostForm(url string, data url.Values) (*http.Response, error) {
 func (c *Client) PostForm(url string, data url.Values) (*http.Response, error) {
 	return c.Post(url, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
 }
+
+// StandardClient returns a stdlib *http.Client with a custom Transport, which
+// shims in a *retryablehttp.Client for added retries.
+func (c *Client) StandardClient() *http.Client {
+	return &http.Client{
+		Transport: &RoundTripper{Client: c},
+	}
+}
