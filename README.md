@@ -44,5 +44,18 @@ The returned response object is an `*http.Response`, the same thing you would
 usually get from `net/http`. Had the request failed one or more times, the above
 call would block and retry with exponential backoff.
 
+## Getting a stdlib `*http.Client` with retries
+
+It's possible to convert a `*retryablehttp.Client` directly to a `*http.Client`.
+This makes use of retryablehttp broadly applicable with minimal effort. Simply
+configure a `*retryablehttp.Client` as you wish, and then call `StandardClient()`:
+
+```go
+retryClient := retryablehttp.NewClient()
+retryClient.RetryMax = 10
+
+standardClient := retryClient.StandardClient() // *http.Client
+```
+
 For more usage and examples see the
 [godoc](http://godoc.org/github.com/hashicorp/go-retryablehttp).
