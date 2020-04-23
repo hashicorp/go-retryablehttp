@@ -357,6 +357,7 @@ type Client struct {
 	ErrorHandler ErrorHandler
 
 	loggerInit sync.Once
+	clientInit sync.Once
 }
 
 // NewClient creates a new Client with default settings.
@@ -490,9 +491,11 @@ func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Respo
 
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
-	if c.HTTPClient == nil {
-		c.HTTPClient = cleanhttp.DefaultPooledClient()
-	}
+	c.clientInit.Do(func() {
+		if c.HTTPClient == nil {
+			c.HTTPClient = cleanhttp.DefaultPooledClient()
+		}
+	})
 
 	logger := c.logger()
 
