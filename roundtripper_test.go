@@ -2,9 +2,13 @@ package retryablehttp
 
 import (
 	"context"
+	"errors"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"reflect"
 	"sync/atomic"
 	"testing"
 )
@@ -86,4 +90,52 @@ func TestRoundTripper_RoundTrip(t *testing.T) {
 	} else if string(v) != "success!" {
 		t.Fatalf("expected %q, got %q", "success!", v)
 	}
+}
+
+func TestRoundTripper_TransportFailureErrorHandling(t *testing.T) {
+	// Make a client with some custom settings to verify they are used.
+	retryClient := NewClient()
+	retryClient.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
+		if err != nil {
+			return true, err
+		}
+
+		return false, nil
+	}
+
+	retryClient.ErrorHandler = PassthroughErrorHandler
+
+	expectedError := &url.Error{
+		Op:  "Get",
+		URL: "http://this-url-does-not-exist-ed2fb.com/",
+		Err: &net.OpError{
+			Op:  "dial",
+			Net: "tcp",
+			Err: &net.DNSError{
+				Name:       "this-url-does-not-exist-ed2fb.com",
+				Err:        "no such host",
+				IsNotFound: true,
+			},
+		},
+	}
+
+	// Get the standard client and execute the request.
+	client := retryClient.StandardClient()
+	_, err := client.Get("http://this-url-does-not-exist-ed2fb.com/")
+
+	// assert expectations
+	if !reflect.DeepEqual(normalizeError(err), expectedError) {
+		t.Fatalf("expected %q, got %q", expectedError, err)
+	}
+}
+
+func normalizeError(err error) error {
+	var dnsError *net.DNSError
+
+	if errors.As(err, &dnsError) {
+		// this field is populated with the DNS server on on CI, but not locally
+		dnsError.Server = ""
+	}
+
+	return err
 }

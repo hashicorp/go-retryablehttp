@@ -1,6 +1,7 @@
 package retryablehttp
 
 import (
+	"errors"
 	"net/http"
 	"sync"
 )
@@ -39,5 +40,10 @@ func (rt *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// Execute the request.
-	return rt.Client.Do(retryableReq)
+	resp, err := rt.Client.Do(retryableReq)
+	if errors.Unwrap(err) != nil {
+		return resp, errors.Unwrap(err)
+	}
+
+	return resp, err
 }
