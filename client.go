@@ -35,6 +35,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -421,6 +422,13 @@ func DefaultRetryPolicy(ctx context.Context, resp *http.Response, err error) (bo
 		return true, nil
 	}
 
+	// 429 Too Many Request is recoverable. Sometimes the server puts
+	// a Retry-After response header to indicate when the server is
+	// available to start processing request from client.
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return true, nil
+	}
+
 	// Check the response code. We retry on 500-range responses to allow
 	// the server time to recover, as 500's are typically not permanent
 	// errors and may relate to outages on the server side. This will catch
@@ -436,6 +444,15 @@ func DefaultRetryPolicy(ctx context.Context, resp *http.Response, err error) (bo
 // will perform exponential backoff based on the attempt number and limited
 // by the provided minimum and maximum durations.
 func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+
+	if resp.StatusCode == 429 {
+		if s, ok := resp.Header["Retry-After"]; ok {
+			if sleep, err := strconv.ParseInt(s[0], 10, 32); err == nil {
+				return time.Duration(int64(time.Second) * sleep)
+			}
+		}
+	}
+
 	mult := math.Pow(2, float64(attemptNum)) * float64(min)
 	sleep := time.Duration(mult)
 	if float64(sleep) != mult || sleep > max {
