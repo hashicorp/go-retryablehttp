@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestRequest(t *testing.T) {
@@ -519,13 +518,17 @@ func TestClient_DefaultBackoff429TooManyRequest(t *testing.T) {
 	}
 
 	_, err := client.Get(ts.URL)
-	assert.Equal(t, nil, err)
+	if err != nil {
+		t.Fatalf("expected no errors since retryable")
+	}
 
-	assert.Equal(t, true, retryable,
-		"Since 429 is recoverable, the default policy shall return true")
+	if true != retryable {
+		t.Fatal("Since 429 is recoverable, the default policy shall return true")
+	}
 
-	assert.Equal(t, time.Second*2, retryAfter,
-		"The header Retry-After specified 2 seconds, and shall not be %d seconds", retryAfter/time.Second)
+	if time.Second*2 != retryAfter {
+		t.Fatalf("The header Retry-After specified 2 seconds, and shall not be %d seconds", retryAfter/time.Second)
+	}
 }
 
 func TestClient_DefaultRetryPolicy_TLS(t *testing.T) {
