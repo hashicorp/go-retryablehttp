@@ -277,7 +277,7 @@ type Logger interface {
 	Printf(string, ...interface{})
 }
 
-// LevelLeveledFormatLogger interface allows to use logger libraries that use formatted
+// LeveledFormatLogger interface allows to use logger libraries that use formatted
 // leveled methods for loging
 type LeveledFormatLogger interface {
   Infof(string, ...interface{})
