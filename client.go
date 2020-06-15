@@ -39,7 +39,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/go-cleanhttp"
+	cleanhttp "github.com/hashicorp/go-cleanhttp"
 )
 
 var (
@@ -276,12 +276,16 @@ type Logger interface {
 	Printf(string, ...interface{})
 }
 
-// LeveledLogger interface implements the basic methods that a logger library needs
+// LeveledLogger is an interface that can be implemented by any logger or a
+// logger wrapper to provide leveled logging. The methods accept a message
+// string and a variadic number of key-value pairs. For log.Printf style
+// formatting where message string contains a format specifier, use Logger
+// interface.
 type LeveledLogger interface {
-	Error(string, ...interface{})
-	Info(string, ...interface{})
-	Debug(string, ...interface{})
-	Warn(string, ...interface{})
+	Error(msg string, keysAndValues ...interface{})
+	Info(msg string, keysAndValues ...interface{})
+	Debug(msg string, keysAndValues ...interface{})
+	Warn(msg string, keysAndValues ...interface{})
 }
 
 // hookLogger adapts an LeveledLogger to Logger for use by the existing hook functions
@@ -543,10 +547,10 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 	if logger != nil {
 		switch v := logger.(type) {
-		case Logger:
-			v.Printf("[DEBUG] %s %s", req.Method, req.URL)
 		case LeveledLogger:
 			v.Debug("performing request", "method", req.Method, "url", req.URL)
+		case Logger:
+			v.Printf("[DEBUG] %s %s", req.Method, req.URL)
 		}
 	}
 
@@ -576,10 +580,10 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		if c.RequestLogHook != nil {
 			switch v := logger.(type) {
-			case Logger:
-				c.RequestLogHook(v, req.Request, i)
 			case LeveledLogger:
 				c.RequestLogHook(hookLogger{v}, req.Request, i)
+			case Logger:
+				c.RequestLogHook(v, req.Request, i)
 			default:
 				c.RequestLogHook(nil, req.Request, i)
 			}
@@ -596,10 +600,10 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		if doErr != nil {
 			switch v := logger.(type) {
-			case Logger:
-				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, doErr)
 			case LeveledLogger:
 				v.Error("request failed", "error", doErr, "method", req.Method, "url", req.URL)
+			case Logger:
+				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, doErr)
 			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
@@ -607,10 +611,10 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			if c.ResponseLogHook != nil {
 				// Call the response logger function if provided.
 				switch v := logger.(type) {
-				case Logger:
-					c.ResponseLogHook(v, resp)
 				case LeveledLogger:
 					c.ResponseLogHook(hookLogger{v}, resp)
+				case Logger:
+					c.ResponseLogHook(v, resp)
 				default:
 					c.ResponseLogHook(nil, resp)
 				}
@@ -640,10 +644,10 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		}
 		if logger != nil {
 			switch v := logger.(type) {
-			case Logger:
-				v.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
 			case LeveledLogger:
 				v.Debug("retrying request", "request", desc, "timeout", wait, "remaining", remain)
+			case Logger:
+				v.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
 			}
 		}
 		select {
@@ -694,10 +698,10 @@ func (c *Client) drainBody(body io.ReadCloser) {
 	if err != nil {
 		if c.logger() != nil {
 			switch v := c.logger().(type) {
-			case Logger:
-				v.Printf("[ERR] error reading response body: %v", err)
 			case LeveledLogger:
 				v.Error("error reading response body", "error", err)
+			case Logger:
+				v.Printf("[ERR] error reading response body: %v", err)
 			}
 		}
 	}
