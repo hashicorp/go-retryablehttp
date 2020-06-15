@@ -646,7 +646,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if doErr != nil {
 			switch v := logger.(type) {
 			case LeveledFormatLogger:
-				v.Errorf("%s %s: request failed: %s", req.Method, req.URL, err)
+				v.Errorf("%s %s: request failed: %s", req.Method, req.URL, doErr)
 			case LeveledLogger:
 				v.Error("request failed", "error", doErr, "method", req.Method, "url", req.URL)
 			case Logger:
