@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
@@ -255,22 +256,44 @@ func TestClient_Do_fails(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	// Create the client. Use short retry windows so we fail faster.
-	client := NewClient()
-	client.RetryWaitMin = 10 * time.Millisecond
-	client.RetryWaitMax = 10 * time.Millisecond
-	client.RetryMax = 2
-
-	// Create the request
-	req, err := NewRequest("POST", ts.URL, nil)
-	if err != nil {
-		t.Fatalf("err: %v", err)
+	tests := []struct {
+		name string
+		cr   CheckRetry
+		err  string
+	}{
+		{
+			name: "default_retry_policy",
+			cr:   DefaultRetryPolicy,
+			err:  "giving up after 3 attempt(s)",
+		},
+		{
+			name: "error_propagated_retry_policy",
+			cr:   ErrorPropagatedRetryPolicy,
+			err:  "giving up after 3 attempt(s): unexpected HTTP status 500 Internal Server Error",
+		},
 	}
 
-	// Send the request.
-	_, err = client.Do(req)
-	if err == nil || !strings.Contains(err.Error(), "giving up") {
-		t.Fatalf("expected giving up error, got: %#v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create the client. Use short retry windows so we fail faster.
+			client := NewClient()
+			client.RetryWaitMin = 10 * time.Millisecond
+			client.RetryWaitMax = 10 * time.Millisecond
+			client.CheckRetry = tt.cr
+			client.RetryMax = 2
+
+			// Create the request
+			req, err := NewRequest("POST", ts.URL, nil)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Send the request.
+			_, err = client.Do(req)
+			if err == nil || !strings.HasSuffix(err.Error(), tt.err) {
+				t.Fatalf("expected giving up error, got: %#v", err)
+			}
+		})
 	}
 }
 
@@ -462,8 +485,10 @@ func TestClient_RequestWithContext(t *testing.T) {
 		t.Fatalf("CheckRetry called %d times, expected 1", called)
 	}
 
-	if err != context.Canceled {
-		t.Fatalf("Expected context.Canceled err, got: %v", err)
+	e := fmt.Sprintf("GET %s giving up after 1 attempt(s): %s", ts.URL, context.Canceled.Error())
+
+	if err.Error() != e {
+		t.Fatalf("Expected err to contain %s, got: %v", e, err)
 	}
 }
 
@@ -493,10 +518,9 @@ func TestClient_CheckRetry(t *testing.T) {
 		t.Fatalf("CheckRetry called %d times, expected 1", called)
 	}
 
-	if err != retryErr {
+	if err.Error() != fmt.Sprintf("GET %s giving up after 2 attempt(s): retryError", ts.URL) {
 		t.Fatalf("Expected retryError, got:%v", err)
 	}
-
 }
 
 func TestClient_DefaultBackoff429TooManyRequest(t *testing.T) {
