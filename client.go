@@ -490,11 +490,12 @@ func ErrorPropagatedRetryPolicy(ctx context.Context, resp *http.Response, err er
 // will perform exponential backoff based on the attempt number and limited
 // by the provided minimum and maximum durations.
 func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
-
-	if resp.StatusCode == http.StatusTooManyRequests {
-		if s, ok := resp.Header["Retry-After"]; ok {
-			if sleep, err := strconv.ParseInt(s[0], 10, 32); err == nil {
-				return time.Duration(int64(time.Second) * sleep)
+	if nil != resp {
+		if resp.StatusCode == http.StatusTooManyRequests {
+			if s, ok := resp.Header["Retry-After"]; ok {
+				if sleep, err := strconv.ParseInt(s[0], 10, 32); err == nil {
+					return time.Duration(int64(time.Second) * sleep)
+				}
 			}
 		}
 	}
