@@ -491,7 +491,7 @@ func ErrorPropagatedRetryPolicy(ctx context.Context, resp *http.Response, err er
 // by the provided minimum and maximum durations.
 //
 // It also tries to parse Retry-After response header when a http.StatusTooManyRequests
-// (HTTP Code 409) is found in the resp parameter. Hence it will return the number of
+// (HTTP Code 429) is found in the resp parameter. Hence it will return the number of
 // seconds the server states it may be ready to process more requests from this client.
 func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
 	if nil != resp {
