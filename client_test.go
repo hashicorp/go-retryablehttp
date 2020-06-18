@@ -546,7 +546,7 @@ func TestClient_DefaultBackoff429TooManyRequest(t *testing.T) {
 		t.Fatalf("expected no errors since retryable")
 	}
 
-	if true != retryable {
+	if !retryable {
 		t.Fatal("Since 429 is recoverable, the default policy shall return true")
 	}
 
