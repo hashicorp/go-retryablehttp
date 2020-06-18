@@ -532,7 +532,7 @@ func TestClient_DefaultBackoff429TooManyRequest(t *testing.T) {
 
 	client := NewClient()
 
-	retryAfter := time.Duration(0)
+	var retryAfter time.Duration
 	retryable := false
 
 	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
