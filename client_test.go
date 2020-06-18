@@ -536,7 +536,7 @@ func TestClient_DefaultBackoff429TooManyRequest(t *testing.T) {
 	retryable := false
 
 	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
-		retryable, _ = DefaultRetryPolicy(context.TODO(), resp, err)
+		retryable, _ = DefaultRetryPolicy(context.Background(), resp, err)
 		retryAfter = DefaultBackoff(client.RetryWaitMin, client.RetryWaitMax, 1, resp)
 		return false, nil
 	}
