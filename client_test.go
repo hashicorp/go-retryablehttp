@@ -550,7 +550,7 @@ func TestClient_DefaultBackoff429TooManyRequest(t *testing.T) {
 		t.Fatal("Since 429 is recoverable, the default policy shall return true")
 	}
 
-	if time.Second*2 != retryAfter {
+	if retryAfter != 2*time.Second {
 		t.Fatalf("The header Retry-After specified 2 seconds, and shall not be %d seconds", retryAfter/time.Second)
 	}
 }
