@@ -426,7 +426,7 @@ func DefaultRetryPolicy(ctx context.Context, resp *http.Response, err error) (bo
 		return true, nil
 	}
 
-	// 429 Too Many Request is recoverable. Sometimes the server puts
+	// 429 Too Many Requests is recoverable. Sometimes the server puts
 	// a Retry-After response header to indicate when the server is
 	// available to start processing request from client.
 	if resp.StatusCode == http.StatusTooManyRequests {
