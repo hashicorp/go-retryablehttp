@@ -588,8 +588,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 	if logger != nil {
 		switch v := logger.(type) {
-    case LeveledFormatLogger:
-      v.Debugf("%s %s: performing request", req.Method, req.URL)
+		case LeveledFormatLogger:
+			v.Debugf("%s %s: performing request", req.Method, req.URL)
 		case LeveledLogger:
 			v.Debug("performing request", "method", req.Method, "url", req.URL)
 		case Logger:
