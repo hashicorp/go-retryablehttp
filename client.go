@@ -678,6 +678,11 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			return nil, req.Context().Err()
 		case <-time.After(wait):
 		}
+
+		// Make shallow copy of http Request so that we can modify its body
+		// without racing against the closeBody call in persistConn.writeLoop.
+		httpreq := *req.Request
+		req.Request = &httpreq
 	}
 
 	// this is the closest we have to success criteria
