@@ -71,6 +71,11 @@ var (
 	schemeErrorRe = regexp.MustCompile(`unsupported protocol scheme`)
 )
 
+type HTTPClient interface {
+	CloseIdleConnections()
+	Do(req *http.Request) (*http.Response, error)
+}
+
 // ReaderFunc is the type of function that can be given natively to NewRequest
 type ReaderFunc func() (io.Reader, error)
 
@@ -314,7 +319,7 @@ type ResponseLogHook func(Logger, *http.Response)
 
 // CheckRetry specifies a policy for handling retries. It is called
 // following each request with the response and error values returned by
-// the http.Client. If CheckRetry returns false, the Client stops retrying
+// the HTTPClient. If CheckRetry returns false, the Client stops retrying
 // and returns the response to the caller. If CheckRetry returns an error,
 // that error value is returned in lieu of the error from the request. The
 // Client will close any response body when retrying, but if the retry is
@@ -336,8 +341,8 @@ type ErrorHandler func(resp *http.Response, err error, numTries int) (*http.Resp
 // Client is used to make HTTP requests. It adds additional functionality
 // like automatic retries to tolerate minor outages.
 type Client struct {
-	HTTPClient *http.Client // Internal HTTP client.
-	Logger     interface{}  // Customer logger instance. Can be either Logger or LeveledLogger
+	HTTPClient HTTPClient  // Internal HTTP client.
+	Logger     interface{} // Customer logger instance. Can be either Logger or LeveledLogger
 
 	RetryWaitMin time.Duration // Minimum time to wait
 	RetryWaitMax time.Duration // Maximum time to wait
