@@ -842,3 +842,21 @@ func TestClient_StandardClient(t *testing.T) {
 		t.Fatalf("expected %v, got %v", client, v)
 	}
 }
+
+func Test_NewRequest(t *testing.T) {
+	req, err := NewRequest("GET", "localhost:1234", nil)
+	if err != nil {
+		t.Fatalf("failed to create a request: %s", err)
+	}
+
+	var b []byte
+	b = nil
+	r, err := NewRequest("GET", "localhost:1234", b)
+	if err != nil {
+		t.Fatalf("failed to create a request: %s", err)
+	}
+
+	if req.body != nil || r.body != nil {
+		t.Fatalf("expected nil body for both requests, got:%v %v", req.body, r.body)
+	}
+}

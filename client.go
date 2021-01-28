@@ -34,6 +34,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -153,6 +154,10 @@ func (r *Request) WriteTo(w io.Writer) (int64, error) {
 func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, error) {
 	var bodyReader ReaderFunc
 	var contentLength int64
+
+	if isNil(rawBody) {
+		return bodyReader, contentLength, nil
+	}
 
 	switch body := rawBody.(type) {
 	// If they gave us a function already, great! Use it.
@@ -771,4 +776,8 @@ func (c *Client) StandardClient() *http.Client {
 	return &http.Client{
 		Transport: &RoundTripper{Client: c},
 	}
+}
+
+func isNil(v interface{}) bool {
+	return v == nil || ((reflect.ValueOf(v).Kind() == reflect.Ptr || reflect.ValueOf(v).Kind() == reflect.Slice) && reflect.ValueOf(v).IsNil())
 }
