@@ -961,3 +961,44 @@ func TestClient_StandardClient(t *testing.T) {
 		t.Fatalf("expected %v, got %v", client, v)
 	}
 }
+
+func TestClient_RedirectWithBody(t *testing.T) {
+	// Mock server which always responds 200.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.RequestURI {
+		case "/foo/redirect":
+			w.Header().Set("Location", "/foo/redirected")
+			w.WriteHeader(307)
+		case "/foo/redirected":
+			w.WriteHeader(200)
+		default:
+			t.Fatalf("bad uri: %s", r.RequestURI)
+		}
+	}))
+	defer ts.Close()
+
+	client := NewClient()
+
+	// has body
+	req, err := NewRequest(http.MethodPost, ts.URL+"/foo/redirect", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	resp.Body.Close()
+
+	// no body
+	if err := req.SetBody(nil); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	resp.Body.Close()
+}
