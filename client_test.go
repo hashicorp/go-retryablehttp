@@ -167,18 +167,21 @@ func testClientDo(t *testing.T, body interface{}) {
 	// Send the request
 	var resp *http.Response
 	doneCh := make(chan struct{})
+	errCh := make(chan error)
 	go func() {
 		defer close(doneCh)
 		var err error
 		resp, err = client.Do(req)
 		if err != nil {
-			t.Fatalf("err: %v", err)
+			errCh <- err
 		}
 	}()
 
 	select {
 	case <-doneCh:
 		t.Fatalf("should retry on error")
+	case err := <-errCh:
+		t.Fatalf("err: %v", err)
 	case <-time.After(200 * time.Millisecond):
 		// Client should still be retrying due to connection failure.
 	}
