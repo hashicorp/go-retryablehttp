@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -524,34 +525,56 @@ func TestClient_CheckRetry(t *testing.T) {
 }
 
 func TestClient_DefaultBackoff429TooManyRequest(t *testing.T) {
+	var header string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Retry-After", "2")
+		w.Header().Set("Retry-After", header)
 		http.Error(w, "test_429_body", http.StatusTooManyRequests)
 	}))
 	defer ts.Close()
 
 	client := NewClient()
 
-	var retryAfter time.Duration
-	retryable := false
-
-	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
-		retryable, _ = DefaultRetryPolicy(context.Background(), resp, err)
-		retryAfter = DefaultBackoff(client.RetryWaitMin, client.RetryWaitMax, 1, resp)
-		return false, nil
+	type tcase struct {
+		name   string
+		header string
+	}
+	cases := []tcase{
+		{
+			name:   "RFC1123_datetime",
+			header: time.Now().Add(2 * time.Second).Format(time.RFC1123),
+		},
+		{
+			name:   "numeric_duration",
+			header: "2",
+		},
 	}
 
-	_, err := client.Get(ts.URL)
-	if err != nil {
-		t.Fatalf("expected no errors since retryable")
-	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			var retryAfter time.Duration
+			retryable := false
 
-	if !retryable {
-		t.Fatal("Since 429 is recoverable, the default policy shall return true")
-	}
+			client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
+				retryable, _ = DefaultRetryPolicy(context.Background(), resp, err)
+				retryAfter = DefaultBackoff(client.RetryWaitMin, client.RetryWaitMax, 1, resp)
+				return false, nil
+			}
 
-	if retryAfter != 2*time.Second {
-		t.Fatalf("The header Retry-After specified 2 seconds, and shall not be %d seconds", retryAfter/time.Second)
+			header = tt.header
+
+			_, err := client.Get(ts.URL)
+			if err != nil {
+				t.Fatalf("expected no errors since retryable")
+			}
+
+			if !retryable {
+				t.Fatal("Since 429 is recoverable, the default policy shall return true")
+			}
+
+			if math.Ceil(retryAfter.Seconds()) != 2 {
+				t.Fatalf("The header Retry-After specified 2 seconds, and shall not be %.0f seconds", math.Ceil(retryAfter.Seconds()))
+			}
+		})
 	}
 }
 
