@@ -470,12 +470,14 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 // (HTTP Code 429) is found in the resp parameter. Hence it will return the number of
 // seconds the server states it may be ready to process more requests from this client.
 func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
-	if resp != nil {
-		if resp.StatusCode == http.StatusTooManyRequests {
-			if s, ok := resp.Header["Retry-After"]; ok {
-				if sleep, err := strconv.ParseInt(s[0], 10, 64); err == nil {
-					return time.Second * time.Duration(sleep)
-				}
+	if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
+		if s, ok := resp.Header["Retry-After"]; ok {
+			if sleep, err := strconv.ParseInt(s[0], 10, 64); err == nil {
+				return time.Second * time.Duration(sleep)
+			}
+
+			if after, err := time.Parse(time.RFC1123, s[0]); err == nil {
+				return after.Sub(time.Now())
 			}
 		}
 	}
