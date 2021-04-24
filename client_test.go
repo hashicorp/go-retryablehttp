@@ -523,35 +523,39 @@ func TestClient_CheckRetry(t *testing.T) {
 	}
 }
 
-func TestClient_DefaultBackoff429TooManyRequest(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Retry-After", "2")
-		http.Error(w, "test_429_body", http.StatusTooManyRequests)
-	}))
-	defer ts.Close()
+func TestClient_DefaultBackoff(t *testing.T) {
+	for _, code := range []int{http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+		t.Run(fmt.Sprintf("http_%d", code), func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Retry-After", "2")
+				http.Error(w, fmt.Sprintf("test_%d_body", code), code)
+			}))
+			defer ts.Close()
 
-	client := NewClient()
+			client := NewClient()
 
-	var retryAfter time.Duration
-	retryable := false
+			var retryAfter time.Duration
+			retryable := false
 
-	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
-		retryable, _ = DefaultRetryPolicy(context.Background(), resp, err)
-		retryAfter = DefaultBackoff(client.RetryWaitMin, client.RetryWaitMax, 1, resp)
-		return false, nil
-	}
+			client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
+				retryable, _ = DefaultRetryPolicy(context.Background(), resp, err)
+				retryAfter = DefaultBackoff(client.RetryWaitMin, client.RetryWaitMax, 1, resp)
+				return false, nil
+			}
 
-	_, err := client.Get(ts.URL)
-	if err != nil {
-		t.Fatalf("expected no errors since retryable")
-	}
+			_, err := client.Get(ts.URL)
+			if err != nil {
+				t.Fatalf("expected no errors since retryable")
+			}
 
-	if !retryable {
-		t.Fatal("Since 429 is recoverable, the default policy shall return true")
-	}
+			if !retryable {
+				t.Fatal("Since the error is recoverable, the default policy shall return true")
+			}
 
-	if retryAfter != 2*time.Second {
-		t.Fatalf("The header Retry-After specified 2 seconds, and shall not be %d seconds", retryAfter/time.Second)
+			if retryAfter != 2*time.Second {
+				t.Fatalf("The header Retry-After specified 2 seconds, and shall not be %d seconds", retryAfter/time.Second)
+			}
+		})
 	}
 }
 
