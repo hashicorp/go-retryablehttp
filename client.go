@@ -71,6 +71,14 @@ var (
 	schemeErrorRe = regexp.MustCompile(`unsupported protocol scheme`)
 )
 
+const (
+	// A request failed error message.
+	RequestFailedMsg = "request failed"
+
+	// A reading response body error message.
+	ReadBodyErrorMsg = "error reading response body"
+)
+
 // ReaderFunc is the type of function that can be given natively to NewRequest
 type ReaderFunc func() (io.Reader, error)
 
@@ -599,9 +607,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if doErr != nil {
 			switch v := logger.(type) {
 			case LeveledLogger:
-				v.Error("request failed", "error", doErr, "method", req.Method, "url", req.URL)
+				v.Error(RequestFailedMsg, "error", doErr, "method", req.Method, "url", req.URL)
 			case Logger:
-				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, doErr)
+				v.Printf("[ERR] %s %s %s: %v", req.Method, req.URL, RequestFailedMsg, doErr)
 			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
@@ -702,9 +710,9 @@ func (c *Client) drainBody(body io.ReadCloser) {
 		if c.logger() != nil {
 			switch v := c.logger().(type) {
 			case LeveledLogger:
-				v.Error("error reading response body", "error", err)
+				v.Error(ReadBodyErrorMsg, "error", err)
 			case Logger:
-				v.Printf("[ERR] error reading response body: %v", err)
+				v.Printf("[ERR] %s: %v", ReadBodyErrorMsg, err)
 			}
 		}
 	}
