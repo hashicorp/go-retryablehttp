@@ -255,20 +255,25 @@ func FromRequest(r *http.Request) (*Request, error) {
 	return &Request{bodyReader, r}, nil
 }
 
-// NewRequest creates a new wrapped request.
-func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
+// NewRequestWithContext creates a new wrapped request.
+func NewRequestWithContext(ctx context.Context, method, url string, rawBody interface{}) (*Request, error) {
 	bodyReader, contentLength, err := getBodyReaderAndContentLength(rawBody)
 	if err != nil {
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequest(method, url, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	httpReq.ContentLength = contentLength
 
 	return &Request{bodyReader, httpReq}, nil
+}
+
+// NewRequest creates a new wrapped request.
+func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
+	return NewRequestWithContext(context.Background(), method, url, rawBody)
 }
 
 // Logger interface allows to use other loggers than
