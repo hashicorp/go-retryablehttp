@@ -769,6 +769,7 @@ func (c *Client) PostForm(url string, data url.Values) (*http.Response, error) {
 // shims in a *retryablehttp.Client for added retries.
 func (c *Client) StandardClient() *http.Client {
 	return &http.Client{
-		Transport: &RoundTripper{Client: c},
+		Transport:     &RoundTripper{Client: c},
+		CheckRedirect: c.HTTPClient.CheckRedirect,
 	}
 }
