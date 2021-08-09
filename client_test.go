@@ -524,11 +524,31 @@ func TestClient_CheckRetry(t *testing.T) {
 }
 
 func TestClient_DefaultBackoff(t *testing.T) {
-	for _, code := range []int{http.StatusTooManyRequests, http.StatusServiceUnavailable} {
-		t.Run(fmt.Sprintf("http_%d", code), func(t *testing.T) {
+	timeNow = func() time.Time {
+		now, err := time.Parse(time.RFC1123, "Fri, 31 Dec 1999 23:59:57 GMT")
+		if err != nil {
+			panic(err)
+		}
+		return now
+	}
+	defer func() {
+		timeNow = time.Now
+	}()
+	tests := []struct {
+		name        string
+		code        int
+		retryHeader string
+	}{
+		{"http_429_seconds", http.StatusTooManyRequests, "2"},
+		{"http_429_date", http.StatusTooManyRequests, "Fri, 31 Dec 1999 23:59:59 GMT"},
+		{"http_503_seconds", http.StatusServiceUnavailable, "2"},
+		{"http_503_date", http.StatusTooManyRequests, "Fri, 31 Dec 1999 23:59:59 GMT"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Retry-After", "2")
-				http.Error(w, fmt.Sprintf("test_%d_body", code), code)
+				w.Header().Set("Retry-After", test.retryHeader)
+				http.Error(w, fmt.Sprintf("test_%d_body", test.code), test.code)
 			}))
 			defer ts.Close()
 
