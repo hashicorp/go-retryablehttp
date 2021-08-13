@@ -542,7 +542,7 @@ func TestClient_DefaultBackoff(t *testing.T) {
 		{"http_429_seconds", http.StatusTooManyRequests, "2"},
 		{"http_429_date", http.StatusTooManyRequests, "Fri, 31 Dec 1999 23:59:59 GMT"},
 		{"http_503_seconds", http.StatusServiceUnavailable, "2"},
-		{"http_503_date", http.StatusTooManyRequests, "Fri, 31 Dec 1999 23:59:59 GMT"},
+		{"http_503_date", http.StatusServiceUnavailable, "Fri, 31 Dec 1999 23:59:59 GMT"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
