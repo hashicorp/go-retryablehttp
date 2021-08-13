@@ -523,7 +523,7 @@ func TestClient_CheckRetry(t *testing.T) {
 	}
 }
 
-func TestClient_DefaultBackoff(t *testing.T) {
+func testStaticTime(t *testing.T) {
 	timeNow = func() time.Time {
 		now, err := time.Parse(time.RFC1123, "Fri, 31 Dec 1999 23:59:57 GMT")
 		if err != nil {
@@ -531,9 +531,13 @@ func TestClient_DefaultBackoff(t *testing.T) {
 		}
 		return now
 	}
-	defer func() {
+	t.Cleanup(func() {
 		timeNow = time.Now
-	}()
+	})
+}
+
+func TestClient_DefaultBackoff(t *testing.T) {
+	testStaticTime(t)
 	tests := []struct {
 		name        string
 		code        int
