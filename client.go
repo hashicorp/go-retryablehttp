@@ -70,10 +70,6 @@ var (
 	// specifically so we resort to matching on the error string.
 	schemeErrorRe = regexp.MustCompile(`unsupported protocol scheme`)
 
-	// A regular expression to match the number of seconds to delay
-	// when parsing the Retry-After header
-	retryAfterSecondsRe = regexp.MustCompile(`^[0-9]+$`)
-
 	// timeNow sets the function that returns the current time.
 	// This defaults to time.Now. Changes to this should only be done in tests.
 	timeNow = time.Now
@@ -496,6 +492,8 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 
 // parseRetryAfterHeader parses the Retry-After header and returns the
 // delay duration according to the spec: https://httpwg.org/specs/rfc7231.html#header.retry-after
+// The bool returned will be true if the header was successfully parsed.
+// Otherwise, the header was either not present, or was not parseable according to the spec.
 //
 // Retry-After headers come in two flavors: Seconds or HTTP-Date
 //
@@ -508,14 +506,14 @@ func parseRetryAfterHeader(headers []string) (time.Duration, bool) {
 	}
 	header := headers[0]
 	// Retry-After: 120
-	if retryAfterSecondsRe.MatchString(header) {
-		if sleep, err := strconv.ParseInt(header, 10, 64); err == nil {
-			return time.Second * time.Duration(sleep), true
+	if sleep, err := strconv.ParseInt(header, 10, 64); err == nil {
+		if sleep < 0 { // a negative sleep doesn't make sense
+			return 0, false
 		}
-		return 0, false
+		return time.Second * time.Duration(sleep), true
 	}
 
-	// Retry-After: Mon, 02 Jan 2006 15:04:05 MST
+	// Retry-After: Fri, 31 Dec 1999 23:59:59 GMT
 	retryTime, err := time.Parse(time.RFC1123, header)
 	if err != nil {
 		return 0, false
