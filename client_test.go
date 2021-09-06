@@ -468,18 +468,21 @@ func TestClient_RequestWithContext(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 	ctx, cancel := context.WithCancel(req.Request.Context())
-	req = req.WithContext(ctx)
+	reqCtx := req.WithContext(ctx)
+	if reqCtx == req {
+		t.Fatal("WithContext must return a new Request object")
+	}
 
 	client := NewClient()
 
 	called := 0
 	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
 		called++
-		return DefaultRetryPolicy(req.Request.Context(), resp, err)
+		return DefaultRetryPolicy(reqCtx.Request.Context(), resp, err)
 	}
 
 	cancel()
-	_, err = client.Do(req)
+	_, err = client.Do(reqCtx)
 
 	if called != 1 {
 		t.Fatalf("CheckRetry called %d times, expected 1", called)

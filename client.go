@@ -94,8 +94,10 @@ type Request struct {
 // WithContext returns wrapped Request with a shallow copy of underlying *http.Request
 // with its context changed to ctx. The provided ctx must be non-nil.
 func (r *Request) WithContext(ctx context.Context) *Request {
-	r.Request = r.Request.WithContext(ctx)
-	return r
+	return &Request{
+		body:    r.body,
+		Request: r.Request.WithContext(ctx),
+	}
 }
 
 // BodyBytes allows accessing the request body. It is an analogue to
