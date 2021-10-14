@@ -456,6 +456,18 @@ func testClientResponseLogHook(t *testing.T, l interface{}, buf *bytes.Buffer) {
 	}
 }
 
+func TestClient_NewRequestWithContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r, err := NewRequestWithContext(ctx, http.MethodGet, "/abc", nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if r.Context() != ctx {
+		t.Fatal("Context must be set")
+	}
+}
+
 func TestClient_RequestWithContext(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)

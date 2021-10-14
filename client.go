@@ -257,12 +257,20 @@ func FromRequest(r *http.Request) (*Request, error) {
 
 // NewRequest creates a new wrapped request.
 func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
+	return NewRequestWithContext(context.Background(), method, url, rawBody)
+}
+
+// NewRequestWithContext creates a new wrapped request with the provided context.
+//
+// The context controls the entire lifetime of a request and its response:
+// obtaining a connection, sending the request, and reading the response headers and body.
+func NewRequestWithContext(ctx context.Context, method, url string, rawBody interface{}) (*Request, error) {
 	bodyReader, contentLength, err := getBodyReaderAndContentLength(rawBody)
 	if err != nil {
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequest(method, url, nil)
+	httpReq, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return nil, err
 	}
