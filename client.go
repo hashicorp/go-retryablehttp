@@ -570,8 +570,6 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	for i := 0; ; i++ {
 		attempt++
 
-		var code int // HTTP response code
-
 		// Always rewind the request body when non-nil.
 		if req.body != nil {
 			body, err := req.body()
@@ -599,9 +597,6 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		// Attempt the request
 		resp, doErr = c.HTTPClient.Do(req.Request)
-		if resp != nil {
-			code = resp.StatusCode
-		}
 
 		// Check if we should continue with retries.
 		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, doErr)
@@ -646,11 +641,11 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		}
 
 		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
-		desc := fmt.Sprintf("%s %s", req.Method, req.URL)
-		if code > 0 {
-			desc = fmt.Sprintf("%s (status: %d)", desc, code)
-		}
 		if logger != nil {
+			desc := fmt.Sprintf("%s %s", req.Method, req.URL)
+			if resp != nil {
+				desc = fmt.Sprintf("%s (status: %d)", desc, resp.StatusCode)
+			}
 			switch v := logger.(type) {
 			case LeveledLogger:
 				v.Debug("retrying request", "request", desc, "timeout", wait, "remaining", remain)
