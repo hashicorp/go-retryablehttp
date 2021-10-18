@@ -465,7 +465,7 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 	// the server time to recover, as 500's are typically not permanent
 	// errors and may relate to outages on the server side. This will catch
 	// invalid response codes as well, like 0 and 999.
-	if resp.StatusCode == 0 || (resp.StatusCode >= 500 && resp.StatusCode != 501) {
+	if resp.StatusCode == 0 || (resp.StatusCode >= 500 && resp.StatusCode != http.StatusNotImplemented) {
 		return true, fmt.Errorf("unexpected HTTP status %s", resp.Status)
 	}
 
@@ -570,8 +570,6 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	for i := 0; ; i++ {
 		attempt++
 
-		var code int // HTTP response code
-
 		// Always rewind the request body when non-nil.
 		if req.body != nil {
 			body, err := req.body()
@@ -599,9 +597,6 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		// Attempt the request
 		resp, doErr = c.HTTPClient.Do(req.Request)
-		if resp != nil {
-			code = resp.StatusCode
-		}
 
 		// Check if we should continue with retries.
 		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, doErr)
@@ -646,11 +641,11 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		}
 
 		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
-		desc := fmt.Sprintf("%s %s", req.Method, req.URL)
-		if code > 0 {
-			desc = fmt.Sprintf("%s (status: %d)", desc, code)
-		}
 		if logger != nil {
+			desc := fmt.Sprintf("%s %s", req.Method, req.URL)
+			if resp != nil {
+				desc = fmt.Sprintf("%s (status: %d)", desc, resp.StatusCode)
+			}
 			switch v := logger.(type) {
 			case LeveledLogger:
 				v.Debug("retrying request", "request", desc, "timeout", wait, "remaining", remain)
@@ -658,11 +653,13 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 				v.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
 			}
 		}
+		timer := time.NewTimer(wait)
 		select {
 		case <-req.Context().Done():
+			timer.Stop()
 			c.HTTPClient.CloseIdleConnections()
 			return nil, req.Context().Err()
-		case <-time.After(wait):
+		case <-timer.C:
 		}
 
 		// Make shallow copy of http Request so that we can modify its body
