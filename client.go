@@ -401,11 +401,24 @@ type ErrorHandler func(resp *http.Response, err error, numTries int) (*http.Resp
 // PrepareRetry is called before retry operation. It can be used for example to re-sign the request
 type PrepareRetry func(req *http.Request) error
 
+type HTTPClient interface {
+	// Do performs an HTTP request and returns an HTTP response.
+	Do(*http.Request) (*http.Response, error)
+	// Done is called when the client is no longer needed.
+	Done()
+}
+
+type HTTPClientFactory interface {
+	// New returns an HTTP client to use for a request, including retries.
+	New() HTTPClient
+}
+
 // Client is used to make HTTP requests. It adds additional functionality
 // like automatic retries to tolerate minor outages.
 type Client struct {
-	HTTPClient *http.Client // Internal HTTP client.
-	Logger     interface{}  // Customer logger instance. Can be either Logger or LeveledLogger
+	HTTPClient        *http.Client // Internal HTTP client. This field is used if set, otherwise HTTPClientFactory is used.
+	HTTPClientFactory HTTPClientFactory
+	Logger            interface{} // Customer logger instance. Can be either Logger or LeveledLogger
 
 	RetryWaitMin time.Duration // Minimum time to wait
 	RetryWaitMax time.Duration // Maximum time to wait
@@ -433,19 +446,18 @@ type Client struct {
 	PrepareRetry PrepareRetry
 
 	loggerInit sync.Once
-	clientInit sync.Once
 }
 
 // NewClient creates a new Client with default settings.
 func NewClient() *Client {
 	return &Client{
-		HTTPClient:   cleanhttp.DefaultPooledClient(),
-		Logger:       defaultLogger,
-		RetryWaitMin: defaultRetryWaitMin,
-		RetryWaitMax: defaultRetryWaitMax,
-		RetryMax:     defaultRetryMax,
-		CheckRetry:   DefaultRetryPolicy,
-		Backoff:      DefaultBackoff,
+		HTTPClientFactory: &CleanPooledClientFactory{},
+		Logger:            defaultLogger,
+		RetryWaitMin:      defaultRetryWaitMin,
+		RetryWaitMax:      defaultRetryWaitMax,
+		RetryMax:          defaultRetryMax,
+		CheckRetry:        DefaultRetryPolicy,
+		Backoff:           DefaultBackoff,
 	}
 }
 
@@ -647,12 +659,6 @@ func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Respo
 
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
-	c.clientInit.Do(func() {
-		if c.HTTPClient == nil {
-			c.HTTPClient = cleanhttp.DefaultPooledClient()
-		}
-	})
-
 	logger := c.logger()
 
 	if logger != nil {
@@ -663,6 +669,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			v.Printf("[DEBUG] %s %s", req.Method, redactURL(req.URL))
 		}
 	}
+
+	httpClient := c.getHTTPClient()
+	defer httpClient.Done()
 
 	var resp *http.Response
 	var attempt int
@@ -677,7 +686,6 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if req.body != nil {
 			body, err := req.body()
 			if err != nil {
-				c.HTTPClient.CloseIdleConnections()
 				return resp, err
 			}
 			if c, ok := body.(io.ReadCloser); ok {
@@ -699,7 +707,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		}
 
 		// Attempt the request
-		resp, doErr = c.HTTPClient.Do(req.Request)
+
+		resp, doErr = httpClient.Do(req.Request)
 
 		// Check if we should continue with retries.
 		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, doErr)
@@ -768,7 +777,6 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		select {
 		case <-req.Context().Done():
 			timer.Stop()
-			c.HTTPClient.CloseIdleConnections()
 			return nil, req.Context().Err()
 		case <-timer.C:
 		}
@@ -790,8 +798,6 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	if doErr == nil && respErr == nil && checkErr == nil && prepareErr == nil && !shouldRetry {
 		return resp, nil
 	}
-
-	defer c.HTTPClient.CloseIdleConnections()
 
 	var err error
 	if prepareErr != nil {
@@ -839,6 +845,19 @@ func (c *Client) drainBody(body io.ReadCloser) {
 			}
 		}
 	}
+}
+
+func (c *Client) getHTTPClient() HTTPClient {
+	if c.HTTPClient != nil {
+		return &idleConnectionsClosingClient{
+			httpClient: c.HTTPClient,
+		}
+	}
+	clientFactory := c.HTTPClientFactory
+	if clientFactory == nil {
+		clientFactory = &CleanPooledClientFactory{}
+	}
+	return clientFactory.New()
 }
 
 // Get is a shortcut for doing a GET request without making a new client.
@@ -916,4 +935,30 @@ func redactURL(u *url.URL) string {
 		ru.User = url.UserPassword(ru.User.Username(), "xxxxx")
 	}
 	return ru.String()
+}
+
+var (
+	_ HTTPClientFactory = &CleanPooledClientFactory{}
+	_ HTTPClient        = &idleConnectionsClosingClient{}
+)
+
+type CleanPooledClientFactory struct {
+}
+
+func (f *CleanPooledClientFactory) New() HTTPClient {
+	return &idleConnectionsClosingClient{
+		httpClient: cleanhttp.DefaultPooledClient(),
+	}
+}
+
+type idleConnectionsClosingClient struct {
+	httpClient *http.Client
+}
+
+func (c *idleConnectionsClosingClient) Do(req *http.Request) (*http.Response, error) {
+	return c.httpClient.Do(req)
+}
+
+func (c *idleConnectionsClosingClient) Done() {
+	c.httpClient.CloseIdleConnections()
 }
