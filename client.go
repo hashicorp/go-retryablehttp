@@ -690,8 +690,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		c.drainBody(resp.Body)
 	}
 
-	// this means CheckRetry thought the request was a failure, but didn't
-	// communicate why
+	// unlikely but technically possible. somehow we had no errors but we
+	// wanted to retry.
 	if err == nil {
 		return nil, fmt.Errorf("%s %s giving up after %d attempt(s)",
 			req.Method, req.URL, attempt)
