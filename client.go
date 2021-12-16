@@ -284,7 +284,7 @@ func NewRequestWithContext(ctx context.Context, method, url string, rawBody inte
 // Logger interface allows to use other loggers than
 // standard log.Logger.
 type Logger interface {
-	Printf(string, ...interface{})
+	Printf(context.Context, string, ...interface{})
 }
 
 // LeveledLogger is an interface that can be implemented by any logger or a
@@ -293,10 +293,20 @@ type Logger interface {
 // formatting where message string contains a format specifier, use Logger
 // interface.
 type LeveledLogger interface {
-	Error(msg string, keysAndValues ...interface{})
-	Info(msg string, keysAndValues ...interface{})
-	Debug(msg string, keysAndValues ...interface{})
-	Warn(msg string, keysAndValues ...interface{})
+	// Debug logs debugging or trace information.
+	Debug(ctx context.Context, f string, v ...interface{})
+
+	// Info logs normal information.
+	Info(ctx context.Context, f string, v ...interface{})
+
+	// Warning logs a message that indicates a potential problem.
+	Warning(ctx context.Context, f string, v ...interface{})
+
+	// Error logs an error that indicates a likely problem.
+	Error(ctx context.Context, f string, v ...interface{})
+
+	// Critical logs an error that indicates a definite problem.
+	Critical(ctx context.Context, f string, v ...interface{})
 }
 
 // hookLogger adapts an LeveledLogger to Logger for use by the existing hook functions
@@ -305,8 +315,8 @@ type hookLogger struct {
 	LeveledLogger
 }
 
-func (h hookLogger) Printf(s string, args ...interface{}) {
-	h.Info(fmt.Sprintf(s, args...))
+func (h hookLogger) Printf(ctx context.Context, s string, args ...interface{}) {
+	h.Info(ctx, fmt.Sprintf(s, args...))
 }
 
 // RequestLogHook allows a function to run before each retry. The HTTP
@@ -545,6 +555,8 @@ func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Respo
 
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
+	ctx := req.Context()
+
 	c.clientInit.Do(func() {
 		if c.HTTPClient == nil {
 			c.HTTPClient = cleanhttp.DefaultPooledClient()
@@ -556,9 +568,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	if logger != nil {
 		switch v := logger.(type) {
 		case LeveledLogger:
-			v.Debug("performing request", "method", req.Method, "url", req.URL)
+			v.Debug(ctx, "performing request", "method", req.Method, "url", req.URL)
 		case Logger:
-			v.Printf("[DEBUG] %s %s", req.Method, req.URL)
+			v.Printf(ctx, "[DEBUG] %s %s", req.Method, req.URL)
 		}
 	}
 
@@ -604,9 +616,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if doErr != nil {
 			switch v := logger.(type) {
 			case LeveledLogger:
-				v.Error("request failed", "error", doErr, "method", req.Method, "url", req.URL)
+				v.Error(ctx, "request failed", "error", doErr, "method", req.Method, "url", req.URL)
 			case Logger:
-				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, doErr)
+				v.Printf(ctx, "[ERR] %s %s request failed: %v", req.Method, req.URL, doErr)
 			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
@@ -637,7 +649,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		// We're going to retry, consume any response to reuse the connection.
 		if doErr == nil {
-			c.drainBody(resp.Body)
+			c.drainBody(ctx, resp.Body)
 		}
 
 		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
@@ -648,9 +660,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			}
 			switch v := logger.(type) {
 			case LeveledLogger:
-				v.Debug("retrying request", "request", desc, "timeout", wait, "remaining", remain)
+				v.Debug(ctx, "retrying request", "request", desc, "timeout", wait, "remaining", remain)
 			case Logger:
-				v.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
+				v.Printf(ctx, "[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
 			}
 		}
 		timer := time.NewTimer(wait)
@@ -687,7 +699,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	// By default, we close the response body and return an error without
 	// returning the response
 	if resp != nil {
-		c.drainBody(resp.Body)
+		c.drainBody(ctx, resp.Body)
 	}
 
 	// this means CheckRetry thought the request was a failure, but didn't
@@ -702,16 +714,16 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 }
 
 // Try to read the response body so we can reuse this connection.
-func (c *Client) drainBody(body io.ReadCloser) {
+func (c *Client) drainBody(ctx context.Context, body io.ReadCloser) {
 	defer body.Close()
 	_, err := io.Copy(ioutil.Discard, io.LimitReader(body, respReadLimit))
 	if err != nil {
 		if c.logger() != nil {
 			switch v := c.logger().(type) {
 			case LeveledLogger:
-				v.Error("error reading response body", "error", err)
+				v.Error(ctx, "error reading response body", "error", err)
 			case Logger:
-				v.Printf("[ERR] error reading response body: %v", err)
+				v.Printf(ctx, "[ERR] error reading response body: %v", err)
 			}
 		}
 	}

@@ -388,6 +388,7 @@ func TestClient_ResponseLogHook(t *testing.T) {
 }
 
 func testClientResponseLogHook(t *testing.T, l interface{}, buf *bytes.Buffer) {
+	ctx := context.Background()
 	passAfter := time.Now().Add(100 * time.Millisecond)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if time.Now().After(passAfter) {
@@ -411,7 +412,7 @@ func testClientResponseLogHook(t *testing.T, l interface{}, buf *bytes.Buffer) {
 			successLog := "test_log_pass"
 			// Log something when we get a 200
 			if logger != nil {
-				logger.Printf(successLog)
+				logger.Printf(ctx, successLog)
 			} else {
 				buf.WriteString(successLog)
 			}
@@ -423,7 +424,7 @@ func testClientResponseLogHook(t *testing.T, l interface{}, buf *bytes.Buffer) {
 			}
 			failLog := string(body)
 			if logger != nil {
-				logger.Printf(failLog)
+				logger.Printf(ctx, failLog)
 			} else {
 				buf.WriteString(failLog)
 			}
