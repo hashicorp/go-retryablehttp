@@ -284,7 +284,7 @@ func NewRequestWithContext(ctx context.Context, method, url string, rawBody inte
 // Logger interface allows to use other loggers than
 // standard log.Logger.
 type Logger interface {
-	Printf(context.Context, string, ...interface{})
+	Printf(string, ...interface{})
 }
 
 // LeveledLogger is an interface that can be implemented by any logger or a
@@ -315,8 +315,8 @@ type hookLogger struct {
 	LeveledLogger
 }
 
-func (h hookLogger) Printf(ctx context.Context, s string, args ...interface{}) {
-	h.Info(ctx, fmt.Sprintf(s, args...))
+func (h hookLogger) Printf(s string, args ...interface{}) {
+	h.Info(context.Background(), fmt.Sprintf(s, args...))
 }
 
 // RequestLogHook allows a function to run before each retry. The HTTP
@@ -570,7 +570,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		case LeveledLogger:
 			v.Debug(ctx, "performing request", "method", req.Method, "url", req.URL)
 		case Logger:
-			v.Printf(ctx, "[DEBUG] %s %s", req.Method, req.URL)
+			v.Printf("[DEBUG] %s %s", req.Method, req.URL)
 		}
 	}
 
@@ -618,7 +618,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			case LeveledLogger:
 				v.Error(ctx, "request failed", "error", doErr, "method", req.Method, "url", req.URL)
 			case Logger:
-				v.Printf(ctx, "[ERR] %s %s request failed: %v", req.Method, req.URL, doErr)
+				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, doErr)
 			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
@@ -662,7 +662,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			case LeveledLogger:
 				v.Debug(ctx, "retrying request", "request", desc, "timeout", wait, "remaining", remain)
 			case Logger:
-				v.Printf(ctx, "[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
+				v.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
 			}
 		}
 		timer := time.NewTimer(wait)
@@ -723,7 +723,7 @@ func (c *Client) drainBody(ctx context.Context, body io.ReadCloser) {
 			case LeveledLogger:
 				v.Error(ctx, "error reading response body", "error", err)
 			case Logger:
-				v.Printf(ctx, "[ERR] error reading response body: %v", err)
+				v.Printf("[ERR] error reading response body: %v", err)
 			}
 		}
 	}
