@@ -387,13 +387,13 @@ type Client struct {
 // NewClient creates a new Client with default settings.
 func NewClient() *Client {
 	return &Client{
-		HTTPClient:   cleanhttp.DefaultPooledClient(),
-		Logger:       defaultLogger,
-		RetryWaitMin: defaultRetryWaitMin,
-		RetryWaitMax: defaultRetryWaitMax,
-		RetryMax:     defaultRetryMax,
-		CheckRetry:   DefaultRetryPolicy,
-		Backoff:      DefaultBackoff,
+		HTTPClient:          cleanhttp.DefaultPooledClient(),
+		Logger:              defaultLogger,
+		RetryWaitMin:        defaultRetryWaitMin,
+		RetryWaitMax:        defaultRetryWaitMax,
+		RetryMax:            defaultRetryMax,
+		CheckRetry:          DefaultRetryPolicy,
+		Backoff:             DefaultBackoff,
 		RateLimitHeaderName: defaultRateLimitHeaderName,
 	}
 }
