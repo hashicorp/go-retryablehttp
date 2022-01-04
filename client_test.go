@@ -554,7 +554,7 @@ func TestClient_DefaultBackoff(t *testing.T) {
 
 			client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
 				retryable, _ = DefaultRetryPolicy(context.Background(), resp, err)
-				retryAfter = DefaultBackoff(client.RetryWaitMin, client.RetryWaitMax, 1, resp)
+				retryAfter = DefaultBackoff(client.RetryWaitMin, client.RetryWaitMax, 1, resp, client.RateLimitHeaderName)
 				return false, nil
 			}
 
@@ -814,7 +814,7 @@ func TestBackoff(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		if v := DefaultBackoff(tc.min, tc.max, tc.i, nil); v != tc.expect {
+		if v := DefaultBackoff(tc.min, tc.max, tc.i, nil, defaultRateLimitHeaderName); v != tc.expect {
 			t.Fatalf("bad: %#v -> %s", tc, v)
 		}
 	}
@@ -824,7 +824,7 @@ func TestClient_BackoffCustom(t *testing.T) {
 	var retries int32
 
 	client := NewClient()
-	client.Backoff = func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+	client.Backoff = func(min, max time.Duration, attemptNum int, resp *http.Response, _ string) time.Duration {
 		atomic.AddInt32(&retries, 1)
 		return time.Millisecond * 1
 	}
