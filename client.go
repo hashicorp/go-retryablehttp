@@ -380,7 +380,7 @@ type Client struct {
 	// For 429 Too Many Requests, sometimes the server returns
 	// a response header to indicate when the server is
 	// available to start processing request from client. This specifies
-	// the header name to loopkup in the response for 429s
+	// the header name to use from the response for 429s.
 	RateLimitHeaderName string
 }
 
