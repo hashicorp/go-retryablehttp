@@ -69,6 +69,9 @@ var (
 	// scheme specified in the URL is invalid. This error isn't typed
 	// specifically so we resort to matching on the error string.
 	schemeErrorRe = regexp.MustCompile(`unsupported protocol scheme`)
+
+	// default header name to lookup in response header for 429 responses
+	defaultRateLimitHeaderName = "Retry-After"
 )
 
 // ReaderFunc is the type of function that can be given natively to NewRequest
@@ -335,7 +338,7 @@ type CheckRetry func(ctx context.Context, resp *http.Response, err error) (bool,
 // Backoff specifies a policy for how long to wait between retries.
 // It is called after a failing request to determine the amount of time
 // that should pass before trying again.
-type Backoff func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration
+type Backoff func(min, max time.Duration, attemptNum int, resp *http.Response, rateLimitHeaderName string) time.Duration
 
 // ErrorHandler is called if retries are expired, containing the last status
 // from the http library. If not specified, default behavior for the library is
@@ -373,6 +376,12 @@ type Client struct {
 
 	loggerInit sync.Once
 	clientInit sync.Once
+
+	// For 429 Too Many Requests, sometimes the server returns
+	// a response header to indicate when the server is
+	// available to start processing request from client. This specifies
+	// the header name to loopkup in the response for 429s
+	RateLimitHeaderName string
 }
 
 // NewClient creates a new Client with default settings.
@@ -385,6 +394,7 @@ func NewClient() *Client {
 		RetryMax:     defaultRetryMax,
 		CheckRetry:   DefaultRetryPolicy,
 		Backoff:      DefaultBackoff,
+		RateLimitHeaderName: defaultRateLimitHeaderName,
 	}
 }
 
@@ -479,10 +489,10 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 // It also tries to parse Retry-After response header when a http.StatusTooManyRequests
 // (HTTP Code 429) is found in the resp parameter. Hence it will return the number of
 // seconds the server states it may be ready to process more requests from this client.
-func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response, rateLimitHeaderName string) time.Duration {
 	if resp != nil {
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
-			if s, ok := resp.Header["Retry-After"]; ok {
+			if s, ok := resp.Header[rateLimitHeaderName]; ok {
 				if sleep, err := strconv.ParseInt(s[0], 10, 64); err == nil {
 					return time.Second * time.Duration(sleep)
 				}
@@ -640,7 +650,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			c.drainBody(resp.Body)
 		}
 
-		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
+		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp, c.RateLimitHeaderName)
 		if logger != nil {
 			desc := fmt.Sprintf("%s %s", req.Method, req.URL)
 			if resp != nil {
