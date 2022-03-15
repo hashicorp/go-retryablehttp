@@ -256,17 +256,32 @@ func TestClient_Do_fails(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	serverUrlWithBasicAuth, err := url.Parse(ts.URL)
+	if err != nil {
+		t.Fatalf("failed parsing test server url: %s", ts.URL)
+	}
+	serverUrlWithBasicAuth.User = url.UserPassword("user", "pasten")
+
 	tests := []struct {
+		url  string
 		name string
 		cr   CheckRetry
 		err  string
 	}{
 		{
+			url:  ts.URL,
 			name: "default_retry_policy",
 			cr:   DefaultRetryPolicy,
 			err:  "giving up after 3 attempt(s)",
 		},
 		{
+			url:  serverUrlWithBasicAuth.String(),
+			name: "default_retry_policy_url_with_basic_auth",
+			cr:   DefaultRetryPolicy,
+			err:  serverUrlWithBasicAuth.Redacted() + " giving up after 3 attempt(s)",
+		},
+		{
+			url:  ts.URL,
 			name: "error_propagated_retry_policy",
 			cr:   ErrorPropagatedRetryPolicy,
 			err:  "giving up after 3 attempt(s): unexpected HTTP status 500 Internal Server Error",
@@ -283,7 +298,7 @@ func TestClient_Do_fails(t *testing.T) {
 			client.RetryMax = 2
 
 			// Create the request
-			req, err := NewRequest("POST", ts.URL, nil)
+			req, err := NewRequest("POST", tt.url, nil)
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
@@ -291,7 +306,7 @@ func TestClient_Do_fails(t *testing.T) {
 			// Send the request.
 			_, err = client.Do(req)
 			if err == nil || !strings.HasSuffix(err.Error(), tt.err) {
-				t.Fatalf("expected giving up error, got: %#v", err)
+				t.Fatalf("expected %#v, got: %#v", tt.err, err)
 			}
 		})
 	}

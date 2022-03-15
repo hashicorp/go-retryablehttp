@@ -556,9 +556,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	if logger != nil {
 		switch v := logger.(type) {
 		case LeveledLogger:
-			v.Debug("performing request", "method", req.Method, "url", req.URL)
+			v.Debug("performing request", "method", req.Method, "url", req.URL.Redacted())
 		case Logger:
-			v.Printf("[DEBUG] %s %s", req.Method, req.URL)
+			v.Printf("[DEBUG] %s %s", req.Method, req.URL.Redacted())
 		}
 	}
 
@@ -604,9 +604,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if doErr != nil {
 			switch v := logger.(type) {
 			case LeveledLogger:
-				v.Error("request failed", "error", doErr, "method", req.Method, "url", req.URL)
+				v.Error("request failed", "error", doErr, "method", req.Method, "url", req.URL.Redacted())
 			case Logger:
-				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, doErr)
+				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL.Redacted(), doErr)
 			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
@@ -642,7 +642,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
 		if logger != nil {
-			desc := fmt.Sprintf("%s %s", req.Method, req.URL)
+			desc := fmt.Sprintf("%s %s", req.Method, req.URL.Redacted())
 			if resp != nil {
 				desc = fmt.Sprintf("%s (status: %d)", desc, resp.StatusCode)
 			}
@@ -694,11 +694,11 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	// communicate why
 	if err == nil {
 		return nil, fmt.Errorf("%s %s giving up after %d attempt(s)",
-			req.Method, req.URL, attempt)
+			req.Method, req.URL.Redacted(), attempt)
 	}
 
 	return nil, fmt.Errorf("%s %s giving up after %d attempt(s): %w",
-		req.Method, req.URL, attempt, err)
+		req.Method, req.URL.Redacted(), attempt, err)
 }
 
 // Try to read the response body so we can reuse this connection.
