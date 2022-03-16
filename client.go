@@ -556,9 +556,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	if logger != nil {
 		switch v := logger.(type) {
 		case LeveledLogger:
-			v.Debug("performing request", "method", req.Method, "url", req.URL.Redacted())
+			v.Debug("performing request", "method", req.Method, "url", redactURL(req.URL))
 		case Logger:
-			v.Printf("[DEBUG] %s %s", req.Method, req.URL.Redacted())
+			v.Printf("[DEBUG] %s %s", req.Method, redactURL(req.URL))
 		}
 	}
 
@@ -604,9 +604,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if doErr != nil {
 			switch v := logger.(type) {
 			case LeveledLogger:
-				v.Error("request failed", "error", doErr, "method", req.Method, "url", req.URL.Redacted())
+				v.Error("request failed", "error", doErr, "method", req.Method, "url", redactURL(req.URL))
 			case Logger:
-				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL.Redacted(), doErr)
+				v.Printf("[ERR] %s %s request failed: %v", req.Method, redactURL(req.URL), doErr)
 			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
@@ -642,7 +642,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
 		if logger != nil {
-			desc := fmt.Sprintf("%s %s", req.Method, req.URL.Redacted())
+			desc := fmt.Sprintf("%s %s", req.Method, redactURL(req.URL))
 			if resp != nil {
 				desc = fmt.Sprintf("%s (status: %d)", desc, resp.StatusCode)
 			}
@@ -694,11 +694,11 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	// communicate why
 	if err == nil {
 		return nil, fmt.Errorf("%s %s giving up after %d attempt(s)",
-			req.Method, req.URL.Redacted(), attempt)
+			req.Method, redactURL(req.URL), attempt)
 	}
 
 	return nil, fmt.Errorf("%s %s giving up after %d attempt(s): %w",
-		req.Method, req.URL.Redacted(), attempt, err)
+		req.Method, redactURL(req.URL), attempt, err)
 }
 
 // Try to read the response body so we can reuse this connection.
@@ -778,4 +778,18 @@ func (c *Client) StandardClient() *http.Client {
 	return &http.Client{
 		Transport: &RoundTripper{Client: c},
 	}
+}
+
+// Taken from url.URL#Redacted() which was introduced in go 1.15.
+// We can switch to using it directly if we'll bump the minimum required go version.
+func redactURL(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+
+	ru := *u
+	if _, has := ru.User.Password(); has {
+		ru.User = url.UserPassword(ru.User.Username(), "xxxxx")
+	}
+	return ru.String()
 }

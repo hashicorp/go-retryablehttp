@@ -278,7 +278,7 @@ func TestClient_Do_fails(t *testing.T) {
 			url:  serverUrlWithBasicAuth.String(),
 			name: "default_retry_policy_url_with_basic_auth",
 			cr:   DefaultRetryPolicy,
-			err:  serverUrlWithBasicAuth.Redacted() + " giving up after 3 attempt(s)",
+			err:  redactURL(serverUrlWithBasicAuth) + " giving up after 3 attempt(s)",
 		},
 		{
 			url:  ts.URL,
