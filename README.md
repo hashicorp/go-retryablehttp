@@ -45,6 +45,21 @@ The returned response object is an `*http.Response`, the same thing you would
 usually get from `net/http`. Had the request failed one or more times, the above
 call would block and retry with exponential backoff.
 
+## Retrying cases that fail after a seeming success
+
+It's possible for a request to succeed, but then for later processing to fail, and sometimes this requires retrying the full request. E.g. a GET that returns a lot of data may "succeed" but the connection may drop while reading all of the data.
+
+In such a case, you can use `DoWithResponseHandler` (or `GetWithResponseHandler`) rather than `Do` (or `Get`). A toy example (which will retry the full request and succeed on the second attempt) is shown below:
+
+```go
+c := retryablehttp.NewClient()
+handlerShouldRetry := false
+c.GetWithResponseHandler("/foo", func(*http.Response) bool {
+    handlerShouldRetry = !handlerShouldRetry
+    return handlerShouldRetry
+})
+```
+
 ## Getting a stdlib `*http.Client` with retries
 
 It's possible to convert a `*retryablehttp.Client` directly to a `*http.Client`.
