@@ -254,6 +254,83 @@ func testClientDo(t *testing.T, body interface{}) {
 	}
 }
 
+func TestClient_DoWithHandler(t *testing.T) {
+	// Create the client. Use short retry windows so we fail faster.
+	client := NewClient()
+	client.RetryWaitMin = 10 * time.Millisecond
+	client.RetryWaitMax = 10 * time.Millisecond
+	client.RetryMax = 2
+
+	var attempts int
+	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
+		attempts++
+		return DefaultRetryPolicy(context.TODO(), resp, err)
+	}
+
+	// Mock server which always responds 200.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	alternatingBool := false
+	tests := []struct {
+		name             string
+		handler          func(*http.Response) bool
+		expectedAttempts int
+		err              string
+	}{
+		{
+			name:             "nil handler",
+			handler:          nil,
+			expectedAttempts: 1,
+		},
+		{
+			name:             "handler never should retry",
+			handler:          func(*http.Response) bool { return false },
+			expectedAttempts: 1,
+		},
+		{
+			name: "handler alternates should retry",
+			handler: func(*http.Response) bool {
+				alternatingBool = !alternatingBool
+				return alternatingBool
+			},
+			expectedAttempts: 2,
+		},
+		{
+			name:             "handler always should retry",
+			handler:          func(*http.Response) bool { return true },
+			expectedAttempts: 3,
+			err:              "giving up after 3 attempt(s)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attempts = 0
+			// Create the request
+			req, err := NewRequest("GET", ts.URL, nil)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			// Send the request.
+			_, err = client.DoWithResponseHandler(req, tt.handler)
+			if err != nil && !strings.Contains(err.Error(), tt.err) {
+				t.Fatalf("error does not match expectation, expected: %s, got: %s", tt.err, err.Error())
+			}
+			if err == nil && tt.err != "" {
+				t.Fatalf("no error, expected: %s", tt.err)
+			}
+
+			if attempts != tt.expectedAttempts {
+				t.Fatalf("expected %d attempts, got %d attempts", tt.expectedAttempts, attempts)
+			}
+		})
+	}
+}
+
 func TestClient_Do_fails(t *testing.T) {
 	// Mock server which always responds 500.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

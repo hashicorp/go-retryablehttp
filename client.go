@@ -553,6 +553,11 @@ func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Respo
 
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
+	return c.DoWithResponseHandler(req, nil)
+}
+
+// DoWithResponseHandler wraps calling an HTTP method plus a response handler with retries.
+func (c *Client) DoWithResponseHandler(req *Request, handler func(*http.Response) (shouldRetry bool)) (*http.Response, error) {
 	c.clientInit.Do(func() {
 		if c.HTTPClient == nil {
 			c.HTTPClient = cleanhttp.DefaultPooledClient()
@@ -606,9 +611,6 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		// Attempt the request
 		resp, doErr = c.HTTPClient.Do(req.Request)
 
-		// Check if we should continue with retries.
-		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, doErr)
-
 		if doErr != nil {
 			switch v := logger.(type) {
 			case LeveledLogger:
@@ -632,6 +634,13 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			}
 		}
 
+		// Check if we should continue with retries.
+		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, doErr)
+
+		successSoFar := !shouldRetry && doErr == nil && checkErr == nil
+		if successSoFar && handler != nil {
+			shouldRetry = handler(resp)
+		}
 		if !shouldRetry {
 			break
 		}
@@ -737,6 +746,16 @@ func (c *Client) Get(url string) (*http.Response, error) {
 		return nil, err
 	}
 	return c.Do(req)
+}
+
+// GetWithResponseHandler is a helper for doing a GET request followed by a function on the response.
+// The intention is for this to be used when errors in the response handling should also be retried.
+func (c *Client) GetWithResponseHandler(url string, handler func(*http.Response) (shouldRetry bool)) (*http.Response, error) {
+	req, err := NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return c.DoWithResponseHandler(req, handler)
 }
 
 // Head is a shortcut for doing a HEAD request without making a new client.
