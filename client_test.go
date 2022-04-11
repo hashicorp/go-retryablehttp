@@ -167,13 +167,13 @@ func testClientDo(t *testing.T, body interface{}) {
 	// Send the request
 	var resp *http.Response
 	doneCh := make(chan struct{})
+	errCh := make(chan error, 1)
 	go func() {
 		defer close(doneCh)
+		defer close(errCh)
 		var err error
 		resp, err = client.Do(req)
-		if err != nil {
-			t.Fatalf("err: %v", err)
-		}
+		errCh <- err
 	}()
 
 	select {
@@ -246,6 +246,11 @@ func testClientDo(t *testing.T, body interface{}) {
 
 	if retryCount < 0 {
 		t.Fatal("request log hook was not called")
+	}
+
+	err = <-errCh
+	if err != nil {
+		t.Fatalf("err: %v", err)
 	}
 }
 
@@ -598,7 +603,7 @@ func TestClient_DefaultRetryPolicy_TLS(t *testing.T) {
 
 func TestClient_DefaultRetryPolicy_redirects(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/", 302)
+		http.Redirect(w, r, "/", http.StatusFound)
 	}))
 	defer ts.Close()
 

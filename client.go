@@ -69,6 +69,11 @@ var (
 	// scheme specified in the URL is invalid. This error isn't typed
 	// specifically so we resort to matching on the error string.
 	schemeErrorRe = regexp.MustCompile(`unsupported protocol scheme`)
+
+	// A regular expression to match the error returned by net/http when the
+	// TLS certificate is not trusted. This error isn't typed
+	// specifically so we resort to matching on the error string.
+	notTrustedErrorRe = regexp.MustCompile(`certificate is not trusted`)
 )
 
 // ReaderFunc is the type of function that can be given natively to NewRequest
@@ -445,6 +450,9 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 			}
 
 			// Don't retry if the error was due to TLS cert verification failure.
+			if notTrustedErrorRe.MatchString(v.Error()) {
+				return false, v
+			}
 			if _, ok := v.Err.(x509.UnknownAuthorityError); ok {
 				return false, v
 			}
