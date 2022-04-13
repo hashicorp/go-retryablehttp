@@ -167,13 +167,13 @@ func testClientDo(t *testing.T, body interface{}) {
 	// Send the request
 	var resp *http.Response
 	doneCh := make(chan struct{})
+	errCh := make(chan error, 1)
 	go func() {
 		defer close(doneCh)
+		defer close(errCh)
 		var err error
 		resp, err = client.Do(req)
-		if err != nil {
-			t.Fatalf("err: %v", err)
-		}
+		errCh <- err
 	}()
 
 	select {
@@ -246,6 +246,106 @@ func testClientDo(t *testing.T, body interface{}) {
 
 	if retryCount < 0 {
 		t.Fatal("request log hook was not called")
+	}
+
+	err = <-errCh
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+}
+
+func TestClient_Do_WithResponseHandler(t *testing.T) {
+	// Create the client. Use short retry windows so we fail faster.
+	client := NewClient()
+	client.RetryWaitMin = 10 * time.Millisecond
+	client.RetryWaitMax = 10 * time.Millisecond
+	client.RetryMax = 2
+
+	var checks int
+	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
+		checks++
+		if err != nil && strings.Contains(err.Error(), "nonretryable") {
+			return false, nil
+		}
+		return DefaultRetryPolicy(context.TODO(), resp, err)
+	}
+
+	// Mock server which always responds 200.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	var shouldSucceed bool
+	tests := []struct {
+		name           string
+		handler        ResponseHandlerFunc
+		expectedChecks int // often 2x number of attempts since we check twice
+		err            string
+	}{
+		{
+			name:           "nil handler",
+			handler:        nil,
+			expectedChecks: 1,
+		},
+		{
+			name: "handler always succeeds",
+			handler: func(*http.Response) error {
+				return nil
+			},
+			expectedChecks: 2,
+		},
+		{
+			name: "handler always fails in a retryable way",
+			handler: func(*http.Response) error {
+				return errors.New("retryable failure")
+			},
+			expectedChecks: 6,
+		},
+		{
+			name: "handler always fails in a nonretryable way",
+			handler: func(*http.Response) error {
+				return errors.New("nonretryable failure")
+			},
+			expectedChecks: 2,
+		},
+		{
+			name: "handler succeeds on second attempt",
+			handler: func(*http.Response) error {
+				if shouldSucceed {
+					return nil
+				}
+				shouldSucceed = true
+				return errors.New("retryable failure")
+			},
+			expectedChecks: 4,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checks = 0
+			shouldSucceed = false
+			// Create the request
+			req, err := NewRequest("GET", ts.URL, nil)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			req.SetResponseHandler(tt.handler)
+
+			// Send the request.
+			_, err = client.Do(req)
+			if err != nil && !strings.Contains(err.Error(), tt.err) {
+				t.Fatalf("error does not match expectation, expected: %s, got: %s", tt.err, err.Error())
+			}
+			if err == nil && tt.err != "" {
+				t.Fatalf("no error, expected: %s", tt.err)
+			}
+
+			if checks != tt.expectedChecks {
+				t.Fatalf("expected %d attempts, got %d attempts", tt.expectedChecks, checks)
+			}
+		})
 	}
 }
 
@@ -598,7 +698,7 @@ func TestClient_DefaultRetryPolicy_TLS(t *testing.T) {
 
 func TestClient_DefaultRetryPolicy_redirects(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/", 302)
+		http.Redirect(w, r, "/", http.StatusFound)
 	}))
 	defer ts.Close()
 
