@@ -79,6 +79,11 @@ var (
 // ReaderFunc is the type of function that can be given natively to NewRequest
 type ReaderFunc func() (io.Reader, error)
 
+// ResponseHandlingFunc is a type of function that takes in a Response, and does something with it.
+// It only runs if the initial part of the request was successful.
+// If an error is returned, the client's retry policy will be used to determine whether to retry the whole request.
+type ResponseHandlingFunc func(*http.Response) error
+
 // LenReader is an interface implemented by many in-memory io.Reader's. Used
 // for automatically sending the right Content-Length header when possible.
 type LenReader interface {
@@ -91,6 +96,8 @@ type Request struct {
 	// used to rewind the request data in between retries.
 	body ReaderFunc
 
+	responseHandler ResponseHandlingFunc
+
 	// Embed an HTTP request directly. This makes a *Request act exactly
 	// like an *http.Request so that all meta methods are supported.
 	*http.Request
@@ -100,9 +107,15 @@ type Request struct {
 // with its context changed to ctx. The provided ctx must be non-nil.
 func (r *Request) WithContext(ctx context.Context) *Request {
 	return &Request{
-		body:    r.body,
-		Request: r.Request.WithContext(ctx),
+		body:            r.body,
+		responseHandler: r.responseHandler,
+		Request:         r.Request.WithContext(ctx),
 	}
+}
+
+// SetResponseHandler allows setting the response handler.
+func (r *Request) SetResponseHandler(fn ResponseHandlingFunc) {
+	r.responseHandler = fn
 }
 
 // BodyBytes allows accessing the request body. It is an analogue to
@@ -259,7 +272,7 @@ func FromRequest(r *http.Request) (*Request, error) {
 		return nil, err
 	}
 	// Could assert contentLength == r.ContentLength
-	return &Request{bodyReader, r}, nil
+	return &Request{body: bodyReader, Request: r}, nil
 }
 
 // NewRequest creates a new wrapped request.
@@ -283,7 +296,7 @@ func NewRequestWithContext(ctx context.Context, method, url string, rawBody inte
 	}
 	httpReq.ContentLength = contentLength
 
-	return &Request{bodyReader, httpReq}, nil
+	return &Request{body: bodyReader, Request: httpReq}, nil
 }
 
 // Logger interface allows to use other loggers than
@@ -553,11 +566,6 @@ func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Respo
 
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
-	return c.DoWithResponseHandler(req, nil)
-}
-
-// DoWithResponseHandler wraps calling an HTTP method plus a response handler with retries.
-func (c *Client) DoWithResponseHandler(req *Request, handler func(*http.Response) (shouldRetry bool)) (*http.Response, error) {
 	c.clientInit.Do(func() {
 		if c.HTTPClient == nil {
 			c.HTTPClient = cleanhttp.DefaultPooledClient()
@@ -578,7 +586,7 @@ func (c *Client) DoWithResponseHandler(req *Request, handler func(*http.Response
 	var resp *http.Response
 	var attempt int
 	var shouldRetry bool
-	var doErr, checkErr error
+	var doErr, respErr, checkErr error
 
 	for i := 0; ; i++ {
 		attempt++
@@ -636,11 +644,11 @@ func (c *Client) DoWithResponseHandler(req *Request, handler func(*http.Response
 
 		// Check if we should continue with retries.
 		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, doErr)
-
-		successSoFar := !shouldRetry && doErr == nil && checkErr == nil
-		if successSoFar && handler != nil {
-			shouldRetry = handler(resp)
+		if !shouldRetry && doErr == nil && req.responseHandler != nil {
+			respErr = req.responseHandler(resp)
+			shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, respErr)
 		}
+
 		if !shouldRetry {
 			break
 		}
@@ -686,15 +694,19 @@ func (c *Client) DoWithResponseHandler(req *Request, handler func(*http.Response
 	}
 
 	// this is the closest we have to success criteria
-	if doErr == nil && checkErr == nil && !shouldRetry {
+	if doErr == nil && respErr == nil && checkErr == nil && !shouldRetry {
 		return resp, nil
 	}
 
 	defer c.HTTPClient.CloseIdleConnections()
 
-	err := doErr
+	var err error
 	if checkErr != nil {
 		err = checkErr
+	} else if respErr != nil {
+		err = respErr
+	} else {
+		err = doErr
 	}
 
 	if c.ErrorHandler != nil {
@@ -746,16 +758,6 @@ func (c *Client) Get(url string) (*http.Response, error) {
 		return nil, err
 	}
 	return c.Do(req)
-}
-
-// GetWithResponseHandler is a helper for doing a GET request followed by a function on the response.
-// The intention is for this to be used when errors in the response handling should also be retried.
-func (c *Client) GetWithResponseHandler(url string, handler func(*http.Response) (shouldRetry bool)) (*http.Response, error) {
-	req, err := NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	return c.DoWithResponseHandler(req, handler)
 }
 
 // Head is a shortcut for doing a HEAD request without making a new client.

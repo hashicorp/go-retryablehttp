@@ -254,16 +254,19 @@ func testClientDo(t *testing.T, body interface{}) {
 	}
 }
 
-func TestClient_DoWithHandler(t *testing.T) {
+func TestClient_Do_WithResponseHandler(t *testing.T) {
 	// Create the client. Use short retry windows so we fail faster.
 	client := NewClient()
 	client.RetryWaitMin = 10 * time.Millisecond
 	client.RetryWaitMax = 10 * time.Millisecond
 	client.RetryMax = 2
 
-	var attempts int
+	var checks int
 	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
-		attempts++
+		checks++
+		if err != nil && strings.Contains(err.Error(), "nonretryable") {
+			return false, nil
+		}
 		return DefaultRetryPolicy(context.TODO(), resp, err)
 	}
 
@@ -273,50 +276,65 @@ func TestClient_DoWithHandler(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	alternatingBool := false
+	var shouldSucceed bool
 	tests := []struct {
-		name             string
-		handler          func(*http.Response) bool
-		expectedAttempts int
-		err              string
+		name           string
+		handler        ResponseHandlingFunc
+		expectedChecks int // often 2x number of attempts since we check twice
+		err            string
 	}{
 		{
-			name:             "nil handler",
-			handler:          nil,
-			expectedAttempts: 1,
+			name:           "nil handler",
+			handler:        nil,
+			expectedChecks: 1,
 		},
 		{
-			name:             "handler never should retry",
-			handler:          func(*http.Response) bool { return false },
-			expectedAttempts: 1,
-		},
-		{
-			name: "handler alternates should retry",
-			handler: func(*http.Response) bool {
-				alternatingBool = !alternatingBool
-				return alternatingBool
+			name: "handler always succeeds",
+			handler: func(*http.Response) error {
+				return nil
 			},
-			expectedAttempts: 2,
+			expectedChecks: 2,
 		},
 		{
-			name:             "handler always should retry",
-			handler:          func(*http.Response) bool { return true },
-			expectedAttempts: 3,
-			err:              "giving up after 3 attempt(s)",
+			name: "handler always fails in a retryable way",
+			handler: func(*http.Response) error {
+				return errors.New("retryable failure")
+			},
+			expectedChecks: 6,
+		},
+		{
+			name: "handler always fails in a nonretryable way",
+			handler: func(*http.Response) error {
+				return errors.New("nonretryable failure")
+			},
+			expectedChecks: 2,
+		},
+		{
+			name: "handler succeeds on second attempt",
+			handler: func(*http.Response) error {
+				if shouldSucceed {
+					return nil
+				}
+				shouldSucceed = true
+				return errors.New("retryable failure")
+			},
+			expectedChecks: 4,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			attempts = 0
+			checks = 0
+			shouldSucceed = false
 			// Create the request
 			req, err := NewRequest("GET", ts.URL, nil)
 			if err != nil {
 				t.Fatalf("err: %v", err)
 			}
+			req.SetResponseHandler(tt.handler)
 
 			// Send the request.
-			_, err = client.DoWithResponseHandler(req, tt.handler)
+			_, err = client.Do(req)
 			if err != nil && !strings.Contains(err.Error(), tt.err) {
 				t.Fatalf("error does not match expectation, expected: %s, got: %s", tt.err, err.Error())
 			}
@@ -324,8 +342,8 @@ func TestClient_DoWithHandler(t *testing.T) {
 				t.Fatalf("no error, expected: %s", tt.err)
 			}
 
-			if attempts != tt.expectedAttempts {
-				t.Fatalf("expected %d attempts, got %d attempts", tt.expectedAttempts, attempts)
+			if checks != tt.expectedChecks {
+				t.Fatalf("expected %d attempts, got %d attempts", tt.expectedChecks, checks)
 			}
 		})
 	}
