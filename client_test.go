@@ -279,7 +279,7 @@ func TestClient_Do_WithResponseHandler(t *testing.T) {
 	var shouldSucceed bool
 	tests := []struct {
 		name           string
-		handler        ResponseHandlingFunc
+		handler        ResponseHandlerFunc
 		expectedChecks int // often 2x number of attempts since we check twice
 		err            string
 	}{
