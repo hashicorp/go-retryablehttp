@@ -49,14 +49,18 @@ call would block and retry with exponential backoff.
 
 It's possible for a request to succeed in the sense that the expected response headers are received, but then to encounter network-level errors while reading the response body. In go-retryablehttp's most basic usage, this error would not be retryable, due to the out-of-band handling of the response body. In some cases it may be desirable to handle the response body as part of the retryable operation.
 
-In such a case, you can use `DoWithResponseHandler` (or `GetWithResponseHandler`) rather than `Do` (or `Get`). A toy example (which will retry the full request and succeed on the second attempt) is shown below:
+A toy example (which will retry the full request and succeed on the second attempt) is shown below:
 
 ```go
 c := retryablehttp.NewClient()
-handlerShouldRetry := false
-c.GetWithResponseHandler("/foo", func(*http.Response) bool {
-    handlerShouldRetry = !handlerShouldRetry
-    return handlerShouldRetry
+r := retryablehttp.NewRequest("GET", "://foo", nil)
+handlerShouldRetry := true
+r.SetResponseHandler(func(*http.Response) error {
+    if !handlerShouldRetry {
+        return nil
+    }
+    handlerShouldRetry = false
+    return errors.New("retryable error")
 })
 ```
 
