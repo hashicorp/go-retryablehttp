@@ -753,43 +753,46 @@ func (c *Client) drainBody(body io.ReadCloser) {
 
 // Get is a shortcut for doing a GET request without making a new client.
 func Get(url string) (*http.Response, error) {
-	return defaultClient.Get(url)
+	return defaultClient.Get(url, nil)
 }
 
 // Get is a convenience helper for doing simple GET requests.
-func (c *Client) Get(url string) (*http.Response, error) {
+func (c *Client) Get(url string, fn ResponseHandlerFunc) (*http.Response, error) {
 	req, err := NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
+	req.SetResponseHandler(fn)
 	return c.Do(req)
 }
 
 // Head is a shortcut for doing a HEAD request without making a new client.
 func Head(url string) (*http.Response, error) {
-	return defaultClient.Head(url)
+	return defaultClient.Head(url, nil)
 }
 
 // Head is a convenience method for doing simple HEAD requests.
-func (c *Client) Head(url string) (*http.Response, error) {
+func (c *Client) Head(url string, fn ResponseHandlerFunc) (*http.Response, error) {
 	req, err := NewRequest("HEAD", url, nil)
 	if err != nil {
 		return nil, err
 	}
+	req.SetResponseHandler(fn)
 	return c.Do(req)
 }
 
 // Post is a shortcut for doing a POST request without making a new client.
 func Post(url, bodyType string, body interface{}) (*http.Response, error) {
-	return defaultClient.Post(url, bodyType, body)
+	return defaultClient.Post(url, bodyType, body, nil)
 }
 
 // Post is a convenience method for doing simple POST requests.
-func (c *Client) Post(url, bodyType string, body interface{}) (*http.Response, error) {
+func (c *Client) Post(url, bodyType string, body interface{}, fn ResponseHandlerFunc) (*http.Response, error) {
 	req, err := NewRequest("POST", url, body)
 	if err != nil {
 		return nil, err
 	}
+	req.SetResponseHandler(fn)
 	req.Header.Set("Content-Type", bodyType)
 	return c.Do(req)
 }
@@ -803,7 +806,7 @@ func PostForm(url string, data url.Values) (*http.Response, error) {
 // PostForm is a convenience method for doing simple POST operations using
 // pre-filled url.Values form data.
 func (c *Client) PostForm(url string, data url.Values) (*http.Response, error) {
-	return c.Post(url, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+	return c.Post(url, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()), nil)
 }
 
 // StandardClient returns a stdlib *http.Client with a custom Transport, which

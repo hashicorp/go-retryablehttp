@@ -410,7 +410,7 @@ func TestClient_Get(t *testing.T) {
 	defer ts.Close()
 
 	// Make the request.
-	resp, err := NewClient().Get(ts.URL + "/foo/bar")
+	resp, err := NewClient().Get(ts.URL+"/foo/bar", nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -462,7 +462,7 @@ func testClientRequestLogHook(t *testing.T, logger interface{}) {
 	}
 
 	// Make the request.
-	resp, err := client.Get(ts.URL + testURIPath)
+	resp, err := client.Get(ts.URL+testURIPath, nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -531,7 +531,7 @@ func testClientResponseLogHook(t *testing.T, l interface{}, buf *bytes.Buffer) {
 	}
 
 	// Perform the request. Exits when we finally get a 200.
-	resp, err := client.Get(ts.URL)
+	resp, err := client.Get(ts.URL, nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -627,7 +627,7 @@ func TestClient_CheckRetry(t *testing.T) {
 	}
 
 	// CheckRetry should return our retryErr value and stop the retry loop.
-	_, err := client.Get(ts.URL)
+	_, err := client.Get(ts.URL, nil)
 
 	if called != 1 {
 		t.Fatalf("CheckRetry called %d times, expected 1", called)
@@ -658,7 +658,7 @@ func TestClient_DefaultBackoff(t *testing.T) {
 				return false, nil
 			}
 
-			_, err := client.Get(ts.URL)
+			_, err := client.Get(ts.URL, nil)
 			if err != nil {
 				t.Fatalf("expected no errors since retryable")
 			}
@@ -687,7 +687,7 @@ func TestClient_DefaultRetryPolicy_TLS(t *testing.T) {
 		return DefaultRetryPolicy(context.TODO(), resp, err)
 	}
 
-	_, err := client.Get(ts.URL)
+	_, err := client.Get(ts.URL, nil)
 	if err == nil {
 		t.Fatalf("expected x509 error, got nil")
 	}
@@ -709,7 +709,7 @@ func TestClient_DefaultRetryPolicy_redirects(t *testing.T) {
 		return DefaultRetryPolicy(context.TODO(), resp, err)
 	}
 
-	_, err := client.Get(ts.URL)
+	_, err := client.Get(ts.URL, nil)
 	if err == nil {
 		t.Fatalf("expected redirect error, got nil")
 	}
@@ -732,7 +732,7 @@ func TestClient_DefaultRetryPolicy_invalidscheme(t *testing.T) {
 	}
 
 	url := strings.Replace(ts.URL, "http", "ftp", 1)
-	_, err := client.Get(url)
+	_, err := client.Get(url, nil)
 	if err == nil {
 		t.Fatalf("expected scheme error, got nil")
 	}
@@ -756,7 +756,7 @@ func TestClient_CheckRetryStop(t *testing.T) {
 		return false, nil
 	}
 
-	_, err := client.Get(ts.URL)
+	_, err := client.Get(ts.URL, nil)
 
 	if called != 1 {
 		t.Fatalf("CheckRetry called %d times, expected 1", called)
@@ -781,7 +781,7 @@ func TestClient_Head(t *testing.T) {
 	defer ts.Close()
 
 	// Make the request.
-	resp, err := NewClient().Head(ts.URL + "/foo/bar")
+	resp, err := NewClient().Head(ts.URL+"/foo/bar", nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -819,7 +819,8 @@ func TestClient_Post(t *testing.T) {
 	resp, err := NewClient().Post(
 		ts.URL+"/foo/bar",
 		"application/json",
-		strings.NewReader(`{"hello":"world"}`))
+		strings.NewReader(`{"hello":"world"}`),
+		nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -939,7 +940,7 @@ func TestClient_BackoffCustom(t *testing.T) {
 	defer ts.Close()
 
 	// Make the request.
-	resp, err := client.Get(ts.URL + "/foo/bar")
+	resp, err := client.Get(ts.URL+"/foo/bar", nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
