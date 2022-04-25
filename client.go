@@ -25,6 +25,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -75,6 +76,22 @@ var (
 	// specifically so we resort to matching on the error string.
 	notTrustedErrorRe = regexp.MustCompile(`certificate is not trusted`)
 )
+
+type RetryableError struct {
+	Err error
+}
+
+type NonretryableError struct {
+	Err error
+}
+
+func (e RetryableError) Error() string {
+	return e.Err.Error()
+}
+
+func (e NonretryableError) Error() string {
+	return e.Err.Error()
+}
 
 // ReaderFunc is the type of function that can be given natively to NewRequest
 type ReaderFunc func() (io.Reader, error)
@@ -430,6 +447,11 @@ func DefaultRetryPolicy(ctx context.Context, resp *http.Response, err error) (bo
 	// do not retry on context.Canceled or context.DeadlineExceeded
 	if ctx.Err() != nil {
 		return false, ctx.Err()
+	}
+
+	var e NonretryableError
+	if errors.As(err, &e) {
+		return false, err
 	}
 
 	// don't propagate other errors

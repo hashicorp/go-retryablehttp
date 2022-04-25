@@ -264,9 +264,6 @@ func TestClient_Do_WithResponseHandler(t *testing.T) {
 	var checks int
 	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
 		checks++
-		if err != nil && strings.Contains(err.Error(), "nonretryable") {
-			return false, nil
-		}
 		return DefaultRetryPolicy(context.TODO(), resp, err)
 	}
 
@@ -298,16 +295,23 @@ func TestClient_Do_WithResponseHandler(t *testing.T) {
 		{
 			name: "handler always fails in a retryable way",
 			handler: func(*http.Response) error {
-				return errors.New("retryable failure")
+				return RetryableError{errors.New("failure")}
 			},
 			expectedChecks: 6,
 		},
 		{
 			name: "handler always fails in a nonretryable way",
 			handler: func(*http.Response) error {
-				return errors.New("nonretryable failure")
+				return NonretryableError{errors.New("failure")}
 			},
 			expectedChecks: 2,
+		},
+		{
+			name: "handler treats unclassified errors as retryable",
+			handler: func(*http.Response) error {
+				return errors.New("failure")
+			},
+			expectedChecks: 6,
 		},
 		{
 			name: "handler succeeds on second attempt",
