@@ -80,8 +80,11 @@ var (
 type ReaderFunc func() (io.Reader, error)
 
 // ResponseHandlerFunc is a type of function that takes in a Response, and does something with it.
-// It only runs if the initial part of the request was successful.
-// If an error is returned, the client's retry policy will be used to determine whether to retry the whole request.
+// If an error is returned, the client's retry policy will be used to determine
+// whether to retry the whole request (including this handler).
+// NOTE: It only runs if the initial part of the request was successful.
+//       Make sure to check status codes! Even if the request was "successful" it may have a non-2xx status code.
+// NOTE: If there is a response body, users should make sure to close it to avoid a memory leak.
 type ResponseHandlerFunc func(*http.Response) error
 
 // LenReader is an interface implemented by many in-memory io.Reader's. Used
