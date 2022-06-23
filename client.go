@@ -181,6 +181,12 @@ func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, erro
 	var bodyReader ReaderFunc
 	var contentLength int64
 
+	// Do not return a body reader func in the event no body should be sent.
+	// Without this check, a literal "0" will be sent as the request body.
+	if rawBody == http.NoBody {
+		return nil, 0, nil
+	}
+
 	switch body := rawBody.(type) {
 	// If they gave us a function already, great! Use it.
 	case ReaderFunc:
