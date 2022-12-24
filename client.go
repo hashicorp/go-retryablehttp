@@ -643,7 +643,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			case LeveledLogger:
 				v.Error("request failed", "error", err, "method", req.Method, "url", req.URL)
 			case Logger:
-				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
+				v.Printf("[ERROR] %s %s request failed: %v", req.Method, req.URL, err)
 			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
@@ -752,7 +752,7 @@ func (c *Client) drainBody(body io.ReadCloser) {
 			case LeveledLogger:
 				v.Error("error reading response body", "error", err)
 			case Logger:
-				v.Printf("[ERR] error reading response body: %v", err)
+				v.Printf("[ERROR] error reading response body: %v", err)
 			}
 		}
 	}
