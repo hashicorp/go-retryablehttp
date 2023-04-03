@@ -17,8 +17,15 @@ jobs:
       - uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
       - run: mkdir -p $TEST_RESULTS/go-retryablyhttp
       - uses: actions/setup-go@4d34df0c2316fe8122ab82dc22947d607c0c91f9 # v4.0.0
+      - name: Setup cache for go modules
+        uses: actions/cache@v3
         with:
-          cache: true
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
       - run: go mod download
       - name: Run go format
         run: |-
@@ -28,7 +35,9 @@ jobs:
             echo "$files"
             exit 1
           fi
-      - name: Run tests with gotestsum
+      - name: Install gotestsum
+        run: go get gotest.tools/gotestsum
+      - name: Run unit tests
         run: |-
           PACKAGE_NAMES=$(go list ./...)
           gotestsum --format=short-verbose --junitfile $TEST_RESULTS/go-retryablyhttp/gotestsum-report.xml -- $PACKAGE_NAMES
