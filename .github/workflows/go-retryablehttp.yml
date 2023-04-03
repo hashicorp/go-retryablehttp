@@ -1,8 +1,9 @@
-name: hashicorp/go-retryablehttp/go-retryablehttp
+name: Build
 on:
   push:
     branches:
       - master
+      - convert-hashicorp-go-retryablehttp-to-actions-20230403-212814
 jobs:
   run-tests:
     runs-on: ubuntu-latest
