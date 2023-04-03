@@ -1,0 +1,39 @@
+name: hashicorp/go-retryablehttp/go-retryablehttp
+on:
+  push:
+    branches:
+    - master
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+    env:
+      TEST_RESULTS: "/tmp/test-results"
+    strategy:
+      matrix:
+        go-version:
+        - 1.14.2
+    steps:
+    - uses: actions/checkout@v3.5.0
+    - run: mkdir -p $TEST_RESULTS/go-retryablyhttp
+    - uses: actions/setup-go@v4.0.0
+      with:
+        cache: true
+    - run: go mod download
+    - name: Run go format
+      run: |-
+        files=$(go fmt ./...)
+        if [ -n "$files" ]; then
+          echo "The following file(s) do not conform to go fmt:"
+          echo "$files"
+          exit 1
+        fi
+    - name: Run tests with gotestsum
+      run: |-
+        PACKAGE_NAMES=$(go list ./...)
+        gotestsum --format=short-verbose --junitfile $TEST_RESULTS/go-retryablyhttp/gotestsum-report.xml -- $PACKAGE_NAMES
+    - uses: actions/upload-artifact@v3.1.1
+      with:
+        path: "/tmp/test-results"
+    - uses: actions/upload-artifact@v3.1.1
+      with:
+        path: "/tmp/test-results"
