@@ -40,7 +40,7 @@ jobs:
       - name: Run unit tests
         run: |-
           PACKAGE_NAMES=$(go list ./...)
-          gotestsum --format=short-verbose --junitfile $TEST_RESULTS/go-retryablyhttp/gotestsum-report.xml -- $PACKAGE_NAMES
+          gotestsum --junitfile "${TEST_RESULTS}"/go-retryablyhttp/gotestsum-report.xml -- $PACKAGE_NAMES
       - uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce # v3.1.2
         with:
           path: "/tmp/test-results"
