@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 // Package retryablehttp provides a familiar HTTP client interface with
 // automatic retries and exponential backoff. It is a thin wrapper over the
 // standard net/http client library and exposes nearly the same public API.
