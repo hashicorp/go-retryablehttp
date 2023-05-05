@@ -260,10 +260,17 @@ func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, erro
 		if err != nil {
 			return nil, 0, err
 		}
-		bodyReader = func() (io.Reader, error) {
-			return bytes.NewReader(buf), nil
+		if len(buf) == 0 {
+			bodyReader = func() (io.Reader, error) {
+				return http.NoBody, nil
+			}
+			contentLength = 0
+		} else {
+			bodyReader = func() (io.Reader, error) {
+				return bytes.NewReader(buf), nil
+			}
+			contentLength = int64(len(buf))
 		}
-		contentLength = int64(len(buf))
 
 	// No body provided, nothing to do
 	case nil:
