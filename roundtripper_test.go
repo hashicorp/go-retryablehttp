@@ -5,7 +5,10 @@ package retryablehttp
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -129,6 +132,34 @@ func TestRoundTripper_TransportFailureErrorHandling(t *testing.T) {
 	// assert expectations
 	if !reflect.DeepEqual(expectedError, normalizeError(err)) {
 		t.Fatalf("expected %q, got %q", expectedError, err)
+	}
+}
+
+func TestHTTPClientWithTLSFailure(t *testing.T) {
+	// Create a mock server with a handler
+	mockServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Mock Response"))
+	}))
+	defer mockServer.Close()
+
+	// Set up the HTTP client with retryablehttp using a custom transport without InsecureSkipVerify
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{},
+	}
+
+	// Set up the retryable HTTP client with the custom transport
+	client := NewClient()
+	client.HTTPClient.Transport = tr
+	client.RetryMax = 2
+
+	// Make a GET request using the retryable HTTP client
+	_, err := client.Get(mockServer.URL)
+
+	// Check that the error is indeed related to x509 certificate validation
+	var x509Error *x509.CertificateInvalidError
+	if assert.Error(t, err) && errors.As(err, &x509Error) {
+		assert.Contains(t, x509Error.Error(), "x509: certificate is not valid for any names")
 	}
 }
 
