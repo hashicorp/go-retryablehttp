@@ -978,3 +978,16 @@ func TestClient_StandardClient(t *testing.T) {
 		t.Fatalf("expected %v, got %v", client, v)
 	}
 }
+
+func TestClient_baseRetryPolicy(t *testing.T) {
+	t.Parallel()
+	var response *http.Response = nil
+
+	ok, err := baseRetryPolicy(response, nil)
+	if ok {
+		t.Fatalf("expected %v, got %v", false, ok)
+	}
+	if err == nil {
+		t.Fatalf("should error")
+	}
+}
