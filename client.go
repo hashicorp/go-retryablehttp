@@ -28,6 +28,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -490,6 +491,11 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 
 		// The error is likely recoverable so retry.
 		return true, nil
+	}
+
+	// check if is nil to make below attributes access safe
+	if resp == nil {
+		return false, errors.New("response is nil")
 	}
 
 	// 429 Too Many Requests is recoverable. Sometimes the server puts
