@@ -742,7 +742,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			close(ch)
 		}()
 
-		resp, err := assembleParts(ctx, ch, numThreads)
+		resp, err = assembleParts(ctx, ch, numThreads)
 		if err != nil {
 			fmt.Printf("Failed to assemble parts: %v\n", err)
 			return nil, err
