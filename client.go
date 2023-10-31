@@ -581,8 +581,72 @@ func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Respo
 	return resp, err
 }
 
+type FilePart struct {
+	PartNum int
+	Bytes   []byte
+}
+
+func assembleParts(ctx context.Context, ch <-chan FilePart, numParts int) (*http.Response, error) {
+	parts := make([]FilePart, numParts)
+	for i := 0; i < numParts; i++ {
+		select {
+		case part := <-ch:
+			parts[part.PartNum-1] = part
+			fmt.Printf("Received part %d from channel\n", part.PartNum)
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	// Assuming parts are in order; otherwise, you'd need to sort `parts` here
+	var assembledBytes []byte
+	for _, part := range parts {
+		assembledBytes = append(assembledBytes, part.Bytes...)
+	}
+
+	buffer := bytes.NewBuffer(assembledBytes)
+	response := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       ioutil.NopCloser(buffer),
+	}
+
+	return response, nil
+}
+
+func downloadPart(ctx context.Context, client *http.Client, url string, start, end int, partNum int, ch chan<- FilePart, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		fmt.Printf("Failed to create request: %v\n", err)
+		return
+	}
+	req = req.WithContext(ctx)
+
+	rangeHeader := "bytes=" + strconv.Itoa(start) + "-" + strconv.Itoa(end)
+	req.Header.Add("Range", rangeHeader)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("Failed to download part %d: %v\n", partNum, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	bytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Failed to read response body for part %d: %v\n", partNum, err)
+		return
+	}
+
+	ch <- FilePart{PartNum: partNum, Bytes: bytes}
+	fmt.Printf("Part %d downloaded and sent to channel\n", partNum)
+}
+
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
+	numThreads := 8
+
 	c.clientInit.Do(func() {
 		if c.HTTPClient == nil {
 			c.HTTPClient = cleanhttp.DefaultPooledClient()
@@ -635,16 +699,65 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		}
 
 		// Attempt the request
-		resp, doErr = c.HTTPClient.Do(req.Request)
+		//resp, doErr = c.HTTPClient.Do(req.Request)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		client := &http.Client{}
+
+		// First, make a HEAD request to get the file size
+		headResp, err := client.Head(req.Request.URL.String())
+		if err != nil {
+			fmt.Printf("Failed to get file size: %v\n", err)
+			return nil, err
+		}
+		defer headResp.Body.Close()
+
+		contentLength, err := strconv.Atoi(headResp.Header.Get("Content-Length"))
+		if err != nil {
+			fmt.Printf("Failed to parse Content-Length: %v\n", err)
+			return nil, err
+		}
+
+		// Now, start downloading the file in parts
+		var wg sync.WaitGroup
+		partSize := contentLength / numThreads
+		ch := make(chan FilePart, numThreads)
+
+		for i := 0; i < numThreads; i++ {
+			start := i * partSize
+			end := start + partSize - 1
+			if i == numThreads-1 {
+				// Make sure the last part includes any leftover bytes
+				end = contentLength - 1
+			}
+
+			wg.Add(1)
+			go downloadPart(ctx, client, req.Request.URL.String(), start, end, i+1, ch, &wg)
+		}
+
+		go func() {
+			wg.Wait()
+			close(ch)
+		}()
+
+		resp, err := assembleParts(ctx, ch, numThreads)
+		if err != nil {
+			fmt.Printf("Failed to assemble parts: %v\n", err)
+			return nil, err
+		}
+
+		// You now have the assembled file in `response.Body`
+		fmt.Println("Download and assembly complete.")
 
 		// Check if we should continue with retries.
-		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, doErr)
-		if !shouldRetry && doErr == nil && req.responseHandler != nil {
+		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, err)
+		if !shouldRetry && err == nil && req.responseHandler != nil {
 			respErr = req.responseHandler(resp)
 			shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, respErr)
 		}
 
-		err := doErr
 		if respErr != nil {
 			err = respErr
 		}
