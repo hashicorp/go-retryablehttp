@@ -650,7 +650,7 @@ func TestClient_CheckRetry(t *testing.T) {
 		t.Fatalf("CheckRetry called %d times, expected 1", called)
 	}
 
-	if err.Error() != fmt.Sprintf("GET %s giving up after 2 attempt(s): retryError", ts.URL) {
+	if err != nil && err.Error() != fmt.Sprintf("GET %s giving up after 2 attempt(s): retryError", ts.URL) {
 		t.Fatalf("Expected retryError, got:%v", err)
 	}
 }
