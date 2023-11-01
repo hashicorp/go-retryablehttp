@@ -759,6 +759,7 @@ func TestClient_DefaultRetryPolicy_redirects(t *testing.T) {
 
 func TestClient_DefaultRetryPolicy_invalidscheme(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 		w.WriteHeader(200)
 	}))
 	defer ts.Close()

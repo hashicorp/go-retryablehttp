@@ -647,6 +647,74 @@ func downloadPart(ctx context.Context, client *http.Client, url string, start, e
 		return
 	}
 }
+func (c *Client) downloadInChunks(req *Request) (*http.Response, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	client := &http.Client{}
+
+	// First, make a HEAD request to get the file size
+	headResp, err := client.Head(req.Request.URL.String())
+	if err != nil {
+		fmt.Printf("Failed to get file size: %v\n", err)
+		return nil, err
+	}
+	defer headResp.Body.Close()
+
+	contentLengthHeader := headResp.Header.Get("Content-Length")
+	if contentLengthHeader == "" {
+		fmt.Printf("Content length header is emply\n\r")
+		return nil, err
+	}
+
+	contentLength, err := strconv.Atoi(contentLengthHeader)
+	if err != nil {
+		fmt.Printf("Failed to parse Content-Length: %v\n", err)
+		return nil, err
+	}
+
+	numThreads := 8
+	// Now, start downloading the file in parts
+	var wg sync.WaitGroup
+	partSize := contentLength / numThreads
+	ch := make(chan FilePart, numThreads)
+	errCh := make(chan error)
+
+	for i := 0; i < numThreads; i++ {
+		start := i * partSize
+		end := start + partSize - 1
+		if i == numThreads-1 {
+			// Make sure the last part includes any leftover bytes
+			end = contentLength - 1
+		}
+
+		wg.Add(1)
+		go downloadPart(ctx, client, req.Request.URL.String(), start, end, i+1, ch, &wg, errCh)
+	}
+
+	// Check for errors
+	go func() {
+		select {
+		case err := <-errCh:
+			fmt.Printf("Error downloading file: %v\n", err)
+			cancel()
+		default:
+		}
+
+		wg.Wait()
+		close(ch)
+	}()
+
+	resp, err := assembleParts(ctx, ch, numThreads)
+	if err != nil {
+		fmt.Printf("Failed to assemble parts: %v\n", err)
+		return nil, err
+	}
+
+	// You now have the assembled file in `response.Body`
+	fmt.Println("Download and assembly complete.")
+	return resp, nil
+}
 
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
@@ -655,8 +723,6 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	var attempt int
 	var shouldRetry bool
 	var doErr, respErr, checkErr error
-
-	numThreads := 8
 
 	c.clientInit.Do(func() {
 		if c.HTTPClient == nil {
@@ -708,73 +774,10 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			return c.HTTPClient.Do(req.Request)
 		} else {
 
-			// Attempt the request
-			//resp, doErr = c.HTTPClient.Do(req.Request)
-
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
-			client := &http.Client{}
-
-			// First, make a HEAD request to get the file size
-			headResp, err := client.Head(req.Request.URL.String())
-			if err != nil {
-				fmt.Printf("Failed to get file size: %v\n", err)
-				return nil, err
+			resp, doErr = c.downloadInChunks(req)
+			if doErr != nil { //change the error logic
+				return nil, doErr
 			}
-			defer headResp.Body.Close()
-
-			contentLengthHeader := headResp.Header.Get("Content-Length")
-			if contentLengthHeader == "" {
-				fmt.Printf("Content length header is emply\n\r")
-				return nil, err
-			}
-
-			contentLength, err := strconv.Atoi(contentLengthHeader)
-			if err != nil {
-				fmt.Printf("Failed to parse Content-Length: %v\n", err)
-				return nil, err
-			}
-
-			// Now, start downloading the file in parts
-			var wg sync.WaitGroup
-			partSize := contentLength / numThreads
-			ch := make(chan FilePart, numThreads)
-			errCh := make(chan error)
-
-			for i := 0; i < numThreads; i++ {
-				start := i * partSize
-				end := start + partSize - 1
-				if i == numThreads-1 {
-					// Make sure the last part includes any leftover bytes
-					end = contentLength - 1
-				}
-
-				wg.Add(1)
-				go downloadPart(ctx, client, req.Request.URL.String(), start, end, i+1, ch, &wg, errCh)
-			}
-
-			// Check for errors
-			go func() {
-				select {
-				case err := <-errCh:
-					fmt.Printf("Error downloading file: %v\n", err)
-					cancel()
-				default:
-				}
-
-				wg.Wait()
-				close(ch)
-			}()
-
-			resp, err = assembleParts(ctx, ch, numThreads)
-			if err != nil {
-				fmt.Printf("Failed to assemble parts: %v\n", err)
-				return nil, err
-			}
-
-			// You now have the assembled file in `response.Body`
-			fmt.Println("Download and assembly complete.")
 
 		}
 
