@@ -275,6 +275,13 @@ func TestClient_Do_WithResponseHandler(t *testing.T) {
 
 	// Mock server which always responds 200.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "HEAD" {
+			// Respond as if it were a HEAD request
+			w.Header().Set("Content-Length", "1234") // Set Content-Length as desired
+			w.WriteHeader(200)
+			return
+		}
+		// Add behavior for other request methods if necessary
 		w.WriteHeader(200)
 	}))
 	defer ts.Close()
@@ -949,6 +956,13 @@ func TestClient_BackoffCustom(t *testing.T) {
 	}
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "HEAD" {
+			// Respond as if it were a HEAD request
+			w.Header().Set("Content-Length", "1234") // Set Content-Length as desired
+			w.WriteHeader(200)
+			return
+		}
+
 		if atomic.LoadInt32(&retries) == int32(client.RetryMax) {
 			w.WriteHeader(200)
 			return

@@ -23,6 +23,13 @@ func TestRoundTripper_implements(t *testing.T) {
 
 func TestRoundTripper_init(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "HEAD" {
+			// Respond as if it were a HEAD request
+			w.Header().Set("Content-Length", "1234") // Set Content-Length as desired
+			w.WriteHeader(200)
+			return
+		}
+
 		w.WriteHeader(200)
 	}))
 	defer ts.Close()
@@ -60,6 +67,12 @@ func TestRoundTripper_RoundTrip(t *testing.T) {
 	var reqCount int32 = 0
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "HEAD" {
+			// Respond as if it were a HEAD request
+			w.Header().Set("Content-Length", "1234") // Set Content-Length as desired
+			w.WriteHeader(200)
+			return
+		}
 		reqNo := atomic.AddInt32(&reqCount, 1)
 		if reqNo < 3 {
 			w.WriteHeader(404)
