@@ -771,18 +771,14 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		}
 
 		if req.Method != "GET" {
-			return c.HTTPClient.Do(req.Request)
+			resp, doErr = c.HTTPClient.Do(req.Request)
 		} else {
-
 			resp, doErr = c.downloadInChunks(req)
-			if doErr != nil { //change the error logic
-				return nil, doErr
-			}
-
 		}
 
 		// Check if we should continue with retries.
 		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, doErr)
+
 		if !shouldRetry && doErr == nil && req.responseHandler != nil {
 			respErr = req.responseHandler(resp)
 			shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, respErr)
