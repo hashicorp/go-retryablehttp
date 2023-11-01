@@ -592,7 +592,7 @@ func assembleParts(ctx context.Context, ch <-chan FilePart, numParts int) (*http
 		select {
 		case part := <-ch:
 			parts[part.PartNum-1] = part
-			fmt.Printf("Received part %d from channel\n", part.PartNum)
+		//TODO put back:	fmt.Printf("Received part %d from channel\n", part.PartNum)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -613,7 +613,7 @@ func assembleParts(ctx context.Context, ch <-chan FilePart, numParts int) (*http
 	return response, nil
 }
 
-func downloadPart(ctx context.Context, client *http.Client, url string, start, end int, partNum int, ch chan<- FilePart, wg *sync.WaitGroup) {
+func downloadPart(ctx context.Context, client *http.Client, url string, start, end int, partNum int, ch chan<- FilePart, wg *sync.WaitGroup, errCh chan<- error) {
 	defer wg.Done()
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -636,15 +636,26 @@ func downloadPart(ctx context.Context, client *http.Client, url string, start, e
 	bytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Printf("Failed to read response body for part %d: %v\n", partNum, err)
+		errCh <- err
 		return
 	}
 
-	ch <- FilePart{PartNum: partNum, Bytes: bytes}
-	fmt.Printf("Part %d downloaded and sent to channel\n", partNum)
+	select {
+	case ch <- FilePart{PartNum: partNum, Bytes: bytes}:
+		fmt.Printf("Part %d downloaded and sent to channel\n", partNum)
+	case <-ctx.Done():
+		return
+	}
 }
 
 // Do wraps calling an HTTP method with retries.
 func (c *Client) Do(req *Request) (*http.Response, error) {
+
+	var resp *http.Response
+	var attempt int
+	var shouldRetry bool
+	var doErr, respErr, checkErr error
+
 	numThreads := 8
 
 	c.clientInit.Do(func() {
@@ -663,11 +674,6 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			v.Printf("[DEBUG] %s %s", req.Method, req.URL)
 		}
 	}
-
-	var resp *http.Response
-	var attempt int
-	var shouldRetry bool
-	var doErr, respErr, checkErr error
 
 	for i := 0; ; i++ {
 		doErr, respErr = nil, nil
@@ -698,75 +704,96 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			}
 		}
 
-		// Attempt the request
-		//resp, doErr = c.HTTPClient.Do(req.Request)
+		if req.Method != "GET" {
+			return c.HTTPClient.Do(req.Request)
+		} else {
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+			// Attempt the request
+			//resp, doErr = c.HTTPClient.Do(req.Request)
 
-		client := &http.Client{}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-		// First, make a HEAD request to get the file size
-		headResp, err := client.Head(req.Request.URL.String())
-		if err != nil {
-			fmt.Printf("Failed to get file size: %v\n", err)
-			return nil, err
-		}
-		defer headResp.Body.Close()
+			client := &http.Client{}
 
-		contentLength, err := strconv.Atoi(headResp.Header.Get("Content-Length"))
-		if err != nil {
-			fmt.Printf("Failed to parse Content-Length: %v\n", err)
-			return nil, err
-		}
+			// First, make a HEAD request to get the file size
+			headResp, err := client.Head(req.Request.URL.String())
+			if err != nil {
+				fmt.Printf("Failed to get file size: %v\n", err)
+				return nil, err
+			}
+			defer headResp.Body.Close()
 
-		// Now, start downloading the file in parts
-		var wg sync.WaitGroup
-		partSize := contentLength / numThreads
-		ch := make(chan FilePart, numThreads)
-
-		for i := 0; i < numThreads; i++ {
-			start := i * partSize
-			end := start + partSize - 1
-			if i == numThreads-1 {
-				// Make sure the last part includes any leftover bytes
-				end = contentLength - 1
+			contentLengthHeader := headResp.Header.Get("Content-Length")
+			if contentLengthHeader == "" {
+				fmt.Printf("Content length header is emply\n\r")
+				return nil, err
 			}
 
-			wg.Add(1)
-			go downloadPart(ctx, client, req.Request.URL.String(), start, end, i+1, ch, &wg)
+			contentLength, err := strconv.Atoi(contentLengthHeader)
+			if err != nil {
+				fmt.Printf("Failed to parse Content-Length: %v\n", err)
+				return nil, err
+			}
+
+			// Now, start downloading the file in parts
+			var wg sync.WaitGroup
+			partSize := contentLength / numThreads
+			ch := make(chan FilePart, numThreads)
+			errCh := make(chan error)
+
+			for i := 0; i < numThreads; i++ {
+				start := i * partSize
+				end := start + partSize - 1
+				if i == numThreads-1 {
+					// Make sure the last part includes any leftover bytes
+					end = contentLength - 1
+				}
+
+				wg.Add(1)
+				go downloadPart(ctx, client, req.Request.URL.String(), start, end, i+1, ch, &wg, errCh)
+			}
+
+			// Check for errors
+			go func() {
+				select {
+				case err := <-errCh:
+					fmt.Printf("Error downloading file: %v\n", err)
+					cancel()
+				default:
+				}
+
+				wg.Wait()
+				close(ch)
+			}()
+
+			resp, err = assembleParts(ctx, ch, numThreads)
+			if err != nil {
+				fmt.Printf("Failed to assemble parts: %v\n", err)
+				return nil, err
+			}
+
+			// You now have the assembled file in `response.Body`
+			fmt.Println("Download and assembly complete.")
+
 		}
-
-		go func() {
-			wg.Wait()
-			close(ch)
-		}()
-
-		resp, err = assembleParts(ctx, ch, numThreads)
-		if err != nil {
-			fmt.Printf("Failed to assemble parts: %v\n", err)
-			return nil, err
-		}
-
-		// You now have the assembled file in `response.Body`
-		fmt.Println("Download and assembly complete.")
 
 		// Check if we should continue with retries.
-		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, err)
-		if !shouldRetry && err == nil && req.responseHandler != nil {
+		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, doErr)
+		if !shouldRetry && doErr == nil && req.responseHandler != nil {
 			respErr = req.responseHandler(resp)
 			shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, respErr)
 		}
 
 		if respErr != nil {
-			err = respErr
+			doErr = respErr
 		}
-		if err != nil {
+		if doErr != nil {
 			switch v := logger.(type) {
 			case LeveledLogger:
-				v.Error("request failed", "error", err, "method", req.Method, "url", req.URL)
+				v.Error("request failed", "error", doErr, "method", req.Method, "url", req.URL)
 			case Logger:
-				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, err)
+				v.Printf("[ERR] %s %s request failed: %v", req.Method, req.URL, doErr)
 			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
