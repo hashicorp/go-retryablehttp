@@ -409,6 +409,13 @@ func TestClient_Do_fails(t *testing.T) {
 
 func TestClient_Get(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "HEAD" {
+			// Respond as if it were a HEAD request
+			w.Header().Set("Content-Length", "1234") // Set Content-Length as desired
+			w.WriteHeader(200)
+			return
+		}
+
 		if r.Method != "GET" {
 			t.Fatalf("bad method: %s", r.Method)
 		}
@@ -444,6 +451,14 @@ func TestClient_RequestLogHook(t *testing.T) {
 
 func testClientRequestLogHook(t *testing.T, logger interface{}) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		if r.Method == "HEAD" {
+			// Respond as if it were a HEAD request
+			w.Header().Set("Content-Length", "1234") // Set Content-Length as desired
+			w.WriteHeader(200)
+			return
+		}
+
 		if r.Method != "GET" {
 			t.Fatalf("bad method: %s", r.Method)
 		}
