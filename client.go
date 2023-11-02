@@ -495,7 +495,9 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 	// 429 Too Many Requests is recoverable. Sometimes the server puts
 	// a Retry-After response header to indicate when the server is
 	// available to start processing request from client.
+
 	if resp.StatusCode == http.StatusTooManyRequests {
+		fmt.Println("RETURN FROM HERE AS TOO MANY REQUESTS:")
 		return true, nil
 	}
 
@@ -613,48 +615,54 @@ func assembleParts(ctx context.Context, ch <-chan FilePart, numParts int) (*http
 	return response, nil
 }
 
-func downloadPart(ctx context.Context, client *http.Client, url string, start, end int, partNum int, ch chan<- FilePart, wg *sync.WaitGroup, errCh chan<- error) {
+type ErrorResponse struct {
+	err  error
+	resp *http.Response
+}
+
+func downloadPart(ctx context.Context, client *http.Client, url string, start, end int, partNum int, ch chan<- FilePart, wg *sync.WaitGroup, errCh chan<- *ErrorResponse) {
 	defer wg.Done()
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		fmt.Printf("Failed to create request: %v\n", err)
+		errCh <- &ErrorResponse{err: fmt.Errorf("Failed to create request: %w", err)}
 		return
 	}
 	req = req.WithContext(ctx)
-
-	rangeHeader := "bytes=" + strconv.Itoa(start) + "-" + strconv.Itoa(end)
-	req.Header.Add("Range", rangeHeader)
+	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", start, end))
 
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Printf("Failed to download part %d: %v\n", partNum, err)
+		errCh <- &ErrorResponse{err: fmt.Errorf("Request failed: %w", err)}
 		return
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != 200 {
+		fmt.Println("sending an error")
+		errCh <- &ErrorResponse{resp: resp, err: fmt.Errorf("Unexpected HTTP status: %d", resp.StatusCode)}
+		return
+	}
+
 	bytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Printf("Failed to read response body for part %d: %v\n", partNum, err)
-		errCh <- err
+		errCh <- &ErrorResponse{err: fmt.Errorf("Failed to read response body for part %d: %w", partNum, err)}
 		return
 	}
 
 	select {
 	case ch <- FilePart{PartNum: partNum, Bytes: bytes}:
-		fmt.Printf("Part %d downloaded and sent to channel\n", partNum)
 	case <-ctx.Done():
-		return
 	}
+
 }
+
 func (c *Client) downloadInChunks(req *Request) (*http.Response, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	client := &http.Client{}
-
 	// First, make a HEAD request to get the file size
-	headResp, err := client.Head(req.Request.URL.String())
+	headResp, err := c.HTTPClient.Head(req.Request.URL.String())
 	if err != nil {
 		fmt.Printf("Failed to get file size: %v\n", err)
 		return nil, err
@@ -678,7 +686,7 @@ func (c *Client) downloadInChunks(req *Request) (*http.Response, error) {
 	var wg sync.WaitGroup
 	partSize := contentLength / numThreads
 	ch := make(chan FilePart, numThreads)
-	errCh := make(chan error)
+	errCh := make(chan *ErrorResponse)
 
 	for i := 0; i < numThreads; i++ {
 		start := i * partSize
@@ -689,22 +697,35 @@ func (c *Client) downloadInChunks(req *Request) (*http.Response, error) {
 		}
 
 		wg.Add(1)
-		go downloadPart(ctx, client, req.Request.URL.String(), start, end, i+1, ch, &wg, errCh)
+		go downloadPart(ctx, c.HTTPClient, req.Request.URL.String(), start, end, i+1, ch, &wg, errCh)
+
 	}
 
-	// Check for errors
+	var errResp *ErrorResponse
+	// Error handling goroutine
 	go func() {
-		select {
-		case err := <-errCh:
-			fmt.Printf("Error downloading file: %v\n", err)
-			cancel()
-		default:
-		}
+		errResp = <-errCh
 
-		wg.Wait()
-		close(ch)
+		//fmt.Printf("Error downloading file: %v\n", errResp.err)
+		//if errResp.resp != nil {
+		//	fmt.Printf("Error response downloading file: %v\n", errResp.resp)
+		//}
+		cancel() // Cancel all running goroutines
 	}()
 
+	fmt.Printf("!Error response downloading file: %v\n", errResp)
+
+	wg.Wait() // Wait for all download parts to finish
+	close(ch)
+	close(errCh)
+
+	// Check if context was canceled, indicating an error occurred
+	if ctx.Err() == context.Canceled {
+		fmt.Println("we are returning error here")
+		return errResp.resp, errResp.err
+	}
+
+	// If no error was detected, continue processing...
 	resp, err := assembleParts(ctx, ch, numThreads)
 	if err != nil {
 		fmt.Printf("Failed to assemble parts: %v\n", err)
@@ -779,6 +800,11 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		// Check if we should continue with retries.
 		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, doErr)
 
+		fmt.Println("shouldRetry:")
+		fmt.Println(shouldRetry)
+		fmt.Println("checkErr:")
+		fmt.Println(checkErr)
+
 		if !shouldRetry && doErr == nil && req.responseHandler != nil {
 			respErr = req.responseHandler(resp)
 			shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, respErr)
@@ -788,6 +814,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			doErr = respErr
 		}
 		if doErr != nil {
+
 			switch v := logger.(type) {
 			case LeveledLogger:
 				v.Error("request failed", "error", doErr, "method", req.Method, "url", req.URL)

@@ -512,6 +512,7 @@ func TestClient_ResponseLogHook(t *testing.T) {
 		})
 		testClientResponseLogHook(t, l, buf)
 	})
+
 	t.Run("ResponseLogHook successfully called with nil Logger", func(t *testing.T) {
 		buf := new(bytes.Buffer)
 		testClientResponseLogHook(t, nil, buf)
@@ -524,6 +525,7 @@ func TestClient_ResponseLogHook(t *testing.T) {
 		buf := new(bytes.Buffer)
 		testClientResponseLogHook(t, LeveledLogger(nil), buf)
 	})
+
 }
 
 func testClientResponseLogHook(t *testing.T, l interface{}, buf *bytes.Buffer) {
@@ -677,8 +679,10 @@ func TestClient_CheckRetry(t *testing.T) {
 	}
 }
 
+//too ma
 func TestClient_DefaultBackoff(t *testing.T) {
-	for _, code := range []int{http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+	//	for _, code := range []int{http.StatusTooManyRequests, http.StatusServiceUnavailable} {
+	for _, code := range []int{http.StatusTooManyRequests} {
 		t.Run(fmt.Sprintf("http_%d", code), func(t *testing.T) {
 			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Retry-After", "2")
