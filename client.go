@@ -635,7 +635,7 @@ func downloadPart(ctx context.Context, client *http.Client, url string, start, e
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != 200 && resp.StatusCode != http.StatusPartialContent {
 		return &ErrorResponse{resp: resp, err: nil}
 	}
 
@@ -695,7 +695,6 @@ func (c *Client) downloadInChunks(req *Request) (*http.Response, error) {
 
 		go func() {
 			defer wg.Done()
-
 			if err := downloadPart(ctx, c.HTTPClient, req.Request.URL.String(), start, end, i, ch); err != nil { //removed i+1
 				errCh <- err
 			}

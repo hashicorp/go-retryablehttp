@@ -2,3 +2,7 @@
 *.iml
 *.test
 .vscode/
+
+.env
+benchmarks/.env
+.DS_Store
