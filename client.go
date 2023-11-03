@@ -595,7 +595,6 @@ func assembleParts(ctx context.Context, ch <-chan FilePart, numParts int) (*http
 		select {
 		case part := <-ch:
 			parts[part.PartNum-1] = part
-		//TODO put back:	fmt.Printf("Received part %d from channel\n", part.PartNum)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
