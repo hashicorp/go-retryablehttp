@@ -829,8 +829,6 @@ func TestClient_Head(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	fmt.Println(resp)
-	fmt.Println("resp is nil")
 
 	resp.Body.Close()
 }
@@ -992,12 +990,11 @@ func TestClient_BackoffCustom(t *testing.T) {
 	defer ts.Close()
 
 	// Make the request.
-	_, err := client.Get(ts.URL + "/foo/bar")
+	resp, err := client.Get(ts.URL + "/foo/bar")
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	//TODO FIX NILL POINTER!!
-	//resp.Body.Close()
+	resp.Body.Close()
 	if retries != int32(client.RetryMax) {
 		t.Fatalf("expected retries: %d != %d", client.RetryMax, retries)
 	}

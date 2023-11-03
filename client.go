@@ -181,6 +181,7 @@ func (r *Request) WriteTo(w io.Writer) (int64, error) {
 }
 
 func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, error) {
+
 	var bodyReader ReaderFunc
 	var contentLength int64
 
@@ -469,6 +470,7 @@ func ErrorPropagatedRetryPolicy(ctx context.Context, resp *http.Response, err er
 func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 	if err != nil {
 		if v, ok := err.(*url.Error); ok {
+
 			// Don't retry if the error was due to too many redirects.
 			if redirectsErrorRe.MatchString(v.Error()) {
 				return false, v
@@ -497,7 +499,6 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 	// available to start processing request from client.
 
 	if resp.StatusCode == http.StatusTooManyRequests {
-		fmt.Println("RETURN FROM HERE AS TOO MANY REQUESTS:")
 		return true, nil
 	}
 
@@ -620,40 +621,34 @@ type ErrorResponse struct {
 	resp *http.Response
 }
 
-func downloadPart(ctx context.Context, client *http.Client, url string, start, end int, partNum int, ch chan<- FilePart, wg *sync.WaitGroup, errCh chan<- *ErrorResponse) {
-	defer wg.Done()
+func downloadPart(ctx context.Context, client *http.Client, url string, start, end int, partNum int, ch chan<- FilePart) *ErrorResponse {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		errCh <- &ErrorResponse{err: fmt.Errorf("Failed to create request: %w", err)}
-		return
+		return &ErrorResponse{err: fmt.Errorf("Failed to create request: %w", err)}
 	}
 	req = req.WithContext(ctx)
 	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", start, end))
 
 	resp, err := client.Do(req)
 	if err != nil {
-		errCh <- &ErrorResponse{err: fmt.Errorf("Request failed: %w", err)}
-		return
+		return &ErrorResponse{err: fmt.Errorf("Request failed: %w", err)}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		fmt.Println("sending an error")
-		errCh <- &ErrorResponse{resp: resp, err: fmt.Errorf("Unexpected HTTP status: %d", resp.StatusCode)}
-		return
+		return &ErrorResponse{resp: resp, err: nil}
 	}
 
 	bytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		errCh <- &ErrorResponse{err: fmt.Errorf("Failed to read response body for part %d: %w", partNum, err)}
-		return
+		return &ErrorResponse{err: fmt.Errorf("Failed to read response body for part %d: %w", partNum, err)}
 	}
-
 	select {
 	case ch <- FilePart{PartNum: partNum, Bytes: bytes}:
 	case <-ctx.Done():
 	}
+	return nil
 
 }
 
@@ -687,6 +682,7 @@ func (c *Client) downloadInChunks(req *Request) (*http.Response, error) {
 	partSize := contentLength / numThreads
 	ch := make(chan FilePart, numThreads)
 	errCh := make(chan *ErrorResponse)
+	doneCh := make(chan struct{})
 
 	for i := 0; i < numThreads; i++ {
 		start := i * partSize
@@ -697,33 +693,38 @@ func (c *Client) downloadInChunks(req *Request) (*http.Response, error) {
 		}
 
 		wg.Add(1)
-		go downloadPart(ctx, c.HTTPClient, req.Request.URL.String(), start, end, i+1, ch, &wg, errCh)
+
+		go func() {
+			defer wg.Done()
+
+			if err := downloadPart(ctx, c.HTTPClient, req.Request.URL.String(), start, end, i, ch); err != nil { //removed i+1
+				errCh <- err
+			}
+		}()
+
+		//	go downloadPart(ctx, c.HTTPClient, req.Request.URL.String(), start, end, i+1, ch, &wg, errCh)
 
 	}
 
-	var errResp *ErrorResponse
-	// Error handling goroutine
+	// Start another goroutine to close the doneCh once all other goroutines have completed.
 	go func() {
-		errResp = <-errCh
-
-		//fmt.Printf("Error downloading file: %v\n", errResp.err)
-		//if errResp.resp != nil {
-		//	fmt.Printf("Error response downloading file: %v\n", errResp.resp)
-		//}
-		cancel() // Cancel all running goroutines
+		wg.Wait()
+		close(doneCh)
 	}()
 
-	fmt.Printf("!Error response downloading file: %v\n", errResp)
-
-	wg.Wait() // Wait for all download parts to finish
-	close(ch)
-	close(errCh)
+	select {
+	case err := <-errCh:
+		cancel()                 // Cancel all goroutines.
+		return err.resp, err.err // Return the error.
+	case <-doneCh:
+		close(errCh) // Close the error channel.
+	}
 
 	// Check if context was canceled, indicating an error occurred
-	if ctx.Err() == context.Canceled {
-		fmt.Println("we are returning error here")
-		return errResp.resp, errResp.err
-	}
+	//if ctx.Err() == context.Canceled {
+	//	fmt.Println("we are returning error here")
+	//	return errResp.resp, errResp.err
+	//}
 
 	// If no error was detected, continue processing...
 	resp, err := assembleParts(ctx, ch, numThreads)
@@ -798,12 +799,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		}
 
 		// Check if we should continue with retries.
-		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, doErr)
-
-		fmt.Println("shouldRetry:")
-		fmt.Println(shouldRetry)
-		fmt.Println("checkErr:")
-		fmt.Println(checkErr)
+		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, doErr) //why checkRetry returns false??
 
 		if !shouldRetry && doErr == nil && req.responseHandler != nil {
 			respErr = req.responseHandler(resp)
