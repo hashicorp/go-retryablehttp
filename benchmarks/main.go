@@ -23,27 +23,13 @@ import (
 	"github.com/joho/godotenv"
 )
 
-var ()
-
 func main() {
 
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
 	}
 	// Initialize a retryable client
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 5
-	standardClient := retryClient.StandardClient() // *http.Client
-
-	//standardClient = &http.Client{
-	//	Transport: &http.Transport{
-	//		TLSClientConfig: &tls.Config{
-	//			MinVersion: tls.VersionSSL30, // Forces SSLv3 which is not recommended and usually disabled
-	//		},
-	//		DisableKeepAlives: true,  // This mimics the single-use connection nature of curl's -T option
-	//		ForceAttemptHTTP2: false, // Disable HTTP/2
-	//	},
-	//}
+	standardClient := retryablehttp.NewClient()
 
 	// Generate a file and get the digest (file name in this context)
 	fileDigest := generateFile()
@@ -76,8 +62,8 @@ func main() {
 }
 
 func generateFile() string {
-	GB := int64(1024 * 1024 * 1024) // 1GB
-	alias := "1gb"
+	GB := int64(1024 * 1024 * 100) // 100 Mb
+	alias := "100MB"
 
 	fileDigest, err := genFakeFiles(".", GB, fmt.Sprintf("test_"+alias+"_"+strconv.Itoa(int(GB))+"_"+strconv.Itoa(int(time.Now().UnixNano()))))
 	if err != nil {
@@ -123,18 +109,6 @@ func getSignedURL(fileDigest, method string) string {
 
 	svc := s3.NewFromConfig(cfg)
 
-	//TODO this tests that connection to R2 works
-
-	//listObjectsOutput, err := svc.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
-	//	Bucket: &bucketName,
-	//})
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	//fmt.Println("objects in a bucket: ")
-	//
-	//fmt.Println(listObjectsOutput)
-
 	psClient := s3.NewPresignClient(svc)
 
 	var presignedRequest *v4.PresignedHTTPRequest
@@ -164,7 +138,7 @@ func getSignedURL(fileDigest, method string) string {
 	return presignedRequest.URL
 }
 
-func putS3Object(client *http.Client, url string, filePath string) error {
+func putS3Object(client *retryablehttp.Client, url string, filePath string) error {
 
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -178,15 +152,15 @@ func putS3Object(client *http.Client, url string, filePath string) error {
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPut, url, file)
+	req, err := retryablehttp.NewRequest(http.MethodPut, url, file)
 	if err != nil {
 		return err
 	}
 
-	req.ContentLength = fileInfo.Size()
-	//req.Header.Set("Content-Length", strconv.FormatInt(fileInfo.Size(), 10))
+	req.Header.Set("Content-Length", fmt.Sprintf("%d", fileInfo.Size()))
 
-	req.Header.Set("Content-Type", "application/octet-stream")
+	//	req.Header.Set("Content-Type", "application/octet-stream")
+	req.ContentLength = fileInfo.Size()
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -199,6 +173,27 @@ func putS3Object(client *http.Client, url string, filePath string) error {
 	}
 
 	return nil
+}
+
+func getS3Object(client *retryablehttp.Client, url string, targetPath string) error {
+	resp, err := client.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	out, err := os.Create(targetPath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	return err
 }
 
 func putS3ObjectWithCurl(curlCommand string) error {
@@ -218,25 +213,4 @@ func putS3ObjectWithCurl(curlCommand string) error {
 	fmt.Println("cf put done")
 
 	return nil
-}
-
-func getS3Object(client *http.Client, url string, targetPath string) error {
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s", resp.Status)
-	}
-
-	out, err := os.Create(targetPath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-	return err
 }
