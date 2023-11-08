@@ -10,7 +10,7 @@ jobs:
       - name: Setup go
         uses: actions/setup-go@4d34df0c2316fe8122ab82dc22947d607c0c91f9 # v4.0.0
         with:
-          go-version: 1.14.2
+          go-version: 1.18
       - uses: actions/checkout@8f4b7f84864484a7bf31766abe9204da3cbe65b3 # v3.5.0
       - run: mkdir -p "$TEST_RESULTS"/go-retryablyhttp
       - name: restore_cache
@@ -20,6 +20,7 @@ jobs:
           restore-keys: go-mod-v1-{{ checksum "go.sum" }}
           path: "/go/pkg/mod"
       - run: go mod download
+      - run: go mod tidy
       - name: Run go format
         run: |-
           files=$(go fmt ./...)
@@ -29,7 +30,7 @@ jobs:
             exit 1
           fi
       - name: Install gotestsum
-        run: go get gotest.tools/gotestsum
+        run: go install gotest.tools/gotestsum@latest
       - name: Run unit tests
         run: |-
           PACKAGE_NAMES=$(go list ./...)
