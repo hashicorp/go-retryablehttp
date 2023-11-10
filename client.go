@@ -28,6 +28,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -498,7 +499,7 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 			if notTrustedErrorRe.MatchString(v.Error()) {
 				return false, v
 			}
-			if _, ok := v.Err.(x509.UnknownAuthorityError); ok {
+			if errors.As(v.Err, &x509.UnknownAuthorityError{}) {
 				return false, v
 			}
 		}
