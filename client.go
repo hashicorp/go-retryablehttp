@@ -73,6 +73,11 @@ var (
 	// specifically so we resort to matching on the error string.
 	schemeErrorRe = regexp.MustCompile(`unsupported protocol scheme`)
 
+	// A regular expression to match the error returned by net/http when a
+	// request header or value is invalid. This error isn't typed
+	// specifically so we resort to matching on the error string.
+	invalidHeaderErrorRe = regexp.MustCompile(`invalid header`)
+
 	// A regular expression to match the error returned by net/http when the
 	// TLS certificate is not trusted. This error isn't typed
 	// specifically so we resort to matching on the error string.
@@ -491,6 +496,11 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 
 			// Don't retry if the error was due to an invalid protocol scheme.
 			if schemeErrorRe.MatchString(v.Error()) {
+				return false, v
+			}
+
+			// Don't retry if the error was due to an invalid header.
+			if invalidHeaderErrorRe.MatchString(v.Error()) {
 				return false, v
 			}
 
