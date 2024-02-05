@@ -393,6 +393,9 @@ type Backoff func(min, max time.Duration, attemptNum int, resp *http.Response) t
 // attempted. If overriding this, be sure to close the body if needed.
 type ErrorHandler func(resp *http.Response, err error, numTries int) (*http.Response, error)
 
+// Postprocess is called before retry operation. It can be used to for example re-sign the request
+type Postprocess func(req *http.Request) error
+
 // Client is used to make HTTP requests. It adds additional functionality
 // like automatic retries to tolerate minor outages.
 type Client struct {
@@ -421,6 +424,9 @@ type Client struct {
 	// ErrorHandler specifies the custom error handler to use, if any
 	ErrorHandler ErrorHandler
 
+	// Postprocess can prepare the request for retry operation, for example re-sign it
+	Postprocess Postprocess
+
 	loggerInit sync.Once
 	clientInit sync.Once
 }
@@ -435,6 +441,7 @@ func NewClient() *Client {
 		RetryMax:     defaultRetryMax,
 		CheckRetry:   DefaultRetryPolicy,
 		Backoff:      DefaultBackoff,
+		Postprocess:  DefaultPostprocess,
 	}
 }
 
@@ -549,6 +556,12 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 		sleep = max
 	}
 	return sleep
+}
+
+// DefaultPostprocess is performing noop during postprocess
+func DefaultPostprocess(_ *http.Request) error {
+	// noop
+	return nil
 }
 
 // LinearJitterBackoff provides a callback for Client.Backoff which will
@@ -728,6 +741,11 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		// without racing against the closeBody call in persistConn.writeLoop.
 		httpreq := *req.Request
 		req.Request = &httpreq
+
+		if err := c.Postprocess(req.Request); err != nil {
+			checkErr = err
+			break
+		}
 	}
 
 	// this is the closest we have to success criteria
