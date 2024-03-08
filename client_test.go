@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -348,6 +349,128 @@ func TestClient_Do_WithResponseHandler(t *testing.T) {
 			if checks != tt.expectedChecks {
 				t.Fatalf("expected %d attempts, got %d attempts", tt.expectedChecks, checks)
 			}
+		})
+	}
+}
+
+func TestClient_Do_WithPrepareRetry(t *testing.T) {
+	// Create the client. Use short retry windows so we fail faster.
+	client := NewClient()
+	client.RetryWaitMin = 10 * time.Millisecond
+	client.RetryWaitMax = 10 * time.Millisecond
+	client.RetryMax = 2
+
+	var checks int
+	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
+		checks++
+		if err != nil && strings.Contains(err.Error(), "nonretryable") {
+			return false, nil
+		}
+		return DefaultRetryPolicy(context.TODO(), resp, err)
+	}
+
+	var prepareChecks int
+	client.PrepareRetry = func(req *http.Request) error {
+		prepareChecks++
+		req.Header.Set("foo", strconv.Itoa(prepareChecks))
+		return nil
+	}
+
+	// Mock server which always responds 200.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	var shouldSucceed bool
+	tests := []struct {
+		name                  string
+		handler               ResponseHandlerFunc
+		expectedChecks        int // often 2x number of attempts since we check twice
+		expectedPrepareChecks int
+		err                   string
+	}{
+		{
+			name:                  "nil handler",
+			handler:               nil,
+			expectedChecks:        1,
+			expectedPrepareChecks: 0,
+		},
+		{
+			name: "handler always succeeds",
+			handler: func(*http.Response) error {
+				return nil
+			},
+			expectedChecks:        2,
+			expectedPrepareChecks: 0,
+		},
+		{
+			name: "handler always fails in a retryable way",
+			handler: func(*http.Response) error {
+				return errors.New("retryable failure")
+			},
+			expectedChecks:        6,
+			expectedPrepareChecks: 2,
+		},
+		{
+			name: "handler always fails in a nonretryable way",
+			handler: func(*http.Response) error {
+				return errors.New("nonretryable failure")
+			},
+			expectedChecks:        2,
+			expectedPrepareChecks: 0,
+		},
+		{
+			name: "handler succeeds on second attempt",
+			handler: func(*http.Response) error {
+				if shouldSucceed {
+					return nil
+				}
+				shouldSucceed = true
+				return errors.New("retryable failure")
+			},
+			expectedChecks:        4,
+			expectedPrepareChecks: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			checks = 0
+			prepareChecks = 0
+			shouldSucceed = false
+			// Create the request
+			req, err := NewRequest("GET", ts.URL, nil)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			req.SetResponseHandler(tt.handler)
+
+			// Send the request.
+			_, err = client.Do(req)
+			if err != nil && !strings.Contains(err.Error(), tt.err) {
+				t.Fatalf("error does not match expectation, expected: %s, got: %s", tt.err, err.Error())
+			}
+			if err == nil && tt.err != "" {
+				t.Fatalf("no error, expected: %s", tt.err)
+			}
+
+			if checks != tt.expectedChecks {
+				t.Fatalf("expected %d attempts, got %d attempts", tt.expectedChecks, checks)
+			}
+
+			if prepareChecks != tt.expectedPrepareChecks {
+				t.Fatalf("expected %d attempts of prepare check, got %d attempts", tt.expectedPrepareChecks, prepareChecks)
+			}
+			header := req.Request.Header.Get("foo")
+			if tt.expectedPrepareChecks == 0 && header != "" {
+				t.Fatalf("expected no changes to request header 'foo', but got '%s'", header)
+			}
+			expectedHeader := strconv.Itoa(tt.expectedPrepareChecks)
+			if tt.expectedPrepareChecks != 0 && header != expectedHeader {
+				t.Fatalf("expected changes in request header 'foo' '%s', but got '%s'", expectedHeader, header)
+			}
+
 		})
 	}
 }
