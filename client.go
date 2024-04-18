@@ -663,6 +663,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if respErr != nil {
 			err = respErr
 		}
+		if err == nil && checkErr != nil {
+			err = checkErr
+		}
 		if err != nil {
 			switch v := logger.(type) {
 			case LeveledLogger:
