@@ -441,7 +441,6 @@ func NewClient() *Client {
 		RetryMax:     defaultRetryMax,
 		CheckRetry:   DefaultRetryPolicy,
 		Backoff:      DefaultBackoff,
-		PrepareRetry: DefaultPrepareRetry,
 	}
 }
 
@@ -556,12 +555,6 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 		sleep = max
 	}
 	return sleep
-}
-
-// DefaultPrepareRetry is performing noop during prepare retry
-func DefaultPrepareRetry(_ *http.Request) error {
-	// noop
-	return nil
 }
 
 // LinearJitterBackoff provides a callback for Client.Backoff which will
@@ -742,9 +735,11 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		httpreq := *req.Request
 		req.Request = &httpreq
 
-		if err := c.PrepareRetry(req.Request); err != nil {
-			prepareErr = err
-			break
+		if c.PrepareRetry != nil {
+			if err := c.PrepareRetry(req.Request); err != nil {
+				prepareErr = err
+				break
+			}
 		}
 	}
 
