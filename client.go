@@ -252,14 +252,12 @@ func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, erro
 	// deal with it seeking so want it to match here instead of the
 	// io.ReadSeeker case.
 	case *bytes.Reader:
-		buf, err := ioutil.ReadAll(body)
-		if err != nil {
-			return nil, 0, err
-		}
+		snapshot := *body
 		bodyReader = func() (io.Reader, error) {
-			return bytes.NewReader(buf), nil
+			r := snapshot
+			return &r, nil
 		}
-		contentLength = int64(len(buf))
+		contentLength = int64(body.Len())
 
 	// Compat case
 	case io.ReadSeeker:
