@@ -978,3 +978,62 @@ func TestClient_StandardClient(t *testing.T) {
 		t.Fatalf("expected %v, got %v", client, v)
 	}
 }
+
+func TestClient_RedirectWithBody(t *testing.T) {
+	var redirects int32
+	// Mock server which always responds 200.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.RequestURI {
+		case "/redirect":
+			w.Header().Set("Location", "/target")
+			w.WriteHeader(http.StatusTemporaryRedirect)
+		case "/target":
+			atomic.AddInt32(&redirects, 1)
+			w.WriteHeader(http.StatusCreated)
+		default:
+			t.Fatalf("bad uri: %s", r.RequestURI)
+		}
+	}))
+	defer ts.Close()
+
+	client := NewClient()
+	client.RequestLogHook = func(logger Logger, req *http.Request, retryNumber int) {
+		if _, err := req.GetBody(); err != nil {
+			t.Fatalf("unexpected error with GetBody: %v", err)
+		}
+	}
+	// create a request with a body
+	req, err := NewRequest(http.MethodPost, ts.URL+"/redirect", strings.NewReader(`{"foo":"bar"}`))
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected status code 201, got: %d", resp.StatusCode)
+	}
+
+	// now one without a body
+	if err := req.SetBody(nil); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected status code 201, got: %d", resp.StatusCode)
+	}
+
+	if atomic.LoadInt32(&redirects) != 2 {
+		t.Fatalf("Expected the client to be redirected 2 times, got: %d", atomic.LoadInt32(&redirects))
+	}
+}
