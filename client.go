@@ -73,6 +73,10 @@ var (
 	// specifically so we resort to matching on the error string.
 	schemeErrorRe = regexp.MustCompile(`unsupported protocol scheme`)
 
+	// timeNow sets the function that returns the current time.
+	// This defaults to time.Now. Changes to this should only be done in tests.
+	timeNow = time.Now
+
 	// A regular expression to match the error returned by net/http when the
 	// TLS certificate is not trusted. This error isn't typed
 	// specifically so we resort to matching on the error string.
@@ -535,10 +539,8 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
 	if resp != nil {
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
-			if s, ok := resp.Header["Retry-After"]; ok {
-				if sleep, err := strconv.ParseInt(s[0], 10, 64); err == nil {
-					return time.Second * time.Duration(sleep)
-				}
+			if sleep, ok := parseRetryAfterHeader(resp.Header["Retry-After"]); ok {
+				return sleep
 			}
 		}
 	}
@@ -549,6 +551,41 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 		sleep = max
 	}
 	return sleep
+}
+
+// parseRetryAfterHeader parses the Retry-After header and returns the
+// delay duration according to the spec: https://httpwg.org/specs/rfc7231.html#header.retry-after
+// The bool returned will be true if the header was successfully parsed.
+// Otherwise, the header was either not present, or was not parseable according to the spec.
+//
+// Retry-After headers come in two flavors: Seconds or HTTP-Date
+//
+// Examples:
+// * Retry-After: Fri, 31 Dec 1999 23:59:59 GMT
+// * Retry-After: 120
+func parseRetryAfterHeader(headers []string) (time.Duration, bool) {
+	if len(headers) == 0 || headers[0] == "" {
+		return 0, false
+	}
+	header := headers[0]
+	// Retry-After: 120
+	if sleep, err := strconv.ParseInt(header, 10, 64); err == nil {
+		if sleep < 0 { // a negative sleep doesn't make sense
+			return 0, false
+		}
+		return time.Second * time.Duration(sleep), true
+	}
+
+	// Retry-After: Fri, 31 Dec 1999 23:59:59 GMT
+	retryTime, err := time.Parse(time.RFC1123, header)
+	if err != nil {
+		return 0, false
+	}
+	if until := retryTime.Sub(timeNow()); until > 0 {
+		return until, true
+	}
+	// date is in the past
+	return 0, true
 }
 
 // LinearJitterBackoff provides a callback for Client.Backoff which will
