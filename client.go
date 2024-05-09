@@ -30,7 +30,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math"
 	"math/rand"
@@ -264,7 +263,7 @@ func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, erro
 		raw := body
 		bodyReader = func() (io.Reader, error) {
 			_, err := raw.Seek(0, 0)
-			return ioutil.NopCloser(raw), err
+			return io.NopCloser(raw), err
 		}
 		if lr, ok := raw.(LenReader); ok {
 			contentLength = int64(lr.Len())
@@ -272,7 +271,7 @@ func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, erro
 
 	// Read all in so we can reset
 	case io.Reader:
-		buf, err := ioutil.ReadAll(body)
+		buf, err := io.ReadAll(body)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -619,13 +618,13 @@ func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Resp
 	}
 
 	// Seed rand; doing this every time is fine
-	rand := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
+	source := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
 
 	// Pick a random number that lies somewhere between the min and max and
 	// multiply by the attemptNum. attemptNum starts at zero so we always
 	// increment here. We first get a random percentage, then apply that to the
 	// difference between min and max, and add to min.
-	jitter := rand.Float64() * float64(max-min)
+	jitter := source.Float64() * float64(max-min)
 	jitterMin := int64(jitter) + int64(min)
 	return time.Duration(jitterMin * int64(attemptNum))
 }
@@ -675,7 +674,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			if c, ok := body.(io.ReadCloser); ok {
 				req.Body = c
 			} else {
-				req.Body = ioutil.NopCloser(body)
+				req.Body = io.NopCloser(body)
 			}
 		}
 
@@ -820,7 +819,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 // Try to read the response body so we can reuse this connection.
 func (c *Client) drainBody(body io.ReadCloser) {
 	defer body.Close()
-	_, err := io.Copy(ioutil.Discard, io.LimitReader(body, respReadLimit))
+	_, err := io.Copy(io.Discard, io.LimitReader(body, respReadLimit))
 	if err != nil {
 		if c.logger() != nil {
 			switch v := c.logger().(type) {
