@@ -27,7 +27,6 @@ package retryablehttp
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
 	"fmt"
 	"io"
 	"log"
@@ -62,6 +61,10 @@ var (
 	// limit the size we consume to respReadLimit.
 	respReadLimit = int64(4096)
 
+	// timeNow sets the function that returns the current time.
+	// This defaults to time.Now. Changes to this should only be done in tests.
+	timeNow = time.Now
+
 	// A regular expression to match the error returned by net/http when the
 	// configured number of redirects is exhausted. This error isn't typed
 	// specifically so we resort to matching on the error string.
@@ -72,9 +75,10 @@ var (
 	// specifically so we resort to matching on the error string.
 	schemeErrorRe = regexp.MustCompile(`unsupported protocol scheme`)
 
-	// timeNow sets the function that returns the current time.
-	// This defaults to time.Now. Changes to this should only be done in tests.
-	timeNow = time.Now
+	// A regular expression to match the error returned by net/http when a
+	// request header or value is invalid. This error isn't typed
+	// specifically so we resort to matching on the error string.
+	invalidHeaderErrorRe = regexp.MustCompile(`invalid header`)
 
 	// A regular expression to match the error returned by net/http when the
 	// TLS certificate is not trusted. This error isn't typed
@@ -501,11 +505,16 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 				return false, v
 			}
 
+			// Don't retry if the error was due to an invalid header.
+			if invalidHeaderErrorRe.MatchString(v.Error()) {
+				return false, v
+			}
+
 			// Don't retry if the error was due to TLS cert verification failure.
 			if notTrustedErrorRe.MatchString(v.Error()) {
 				return false, v
 			}
-			if _, ok := v.Err.(x509.UnknownAuthorityError); ok {
+			if isCertError(v.Err) {
 				return false, v
 			}
 		}
