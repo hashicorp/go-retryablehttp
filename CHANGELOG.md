@@ -6,6 +6,10 @@ ENHANCEMENTS:
 - client: support HTTP-date values for `Retry-After` header value (#138)
 - client: avoid reading entire body when the body is a `*bytes.Reader` (#197)
 
+BUG FIXES:
+
+- client: fix a broken check for invalid server certificate in go 1.20+ (#210)
+
 ## 0.7.5 (Nov 8, 2023)
 
 BUG FIXES:
