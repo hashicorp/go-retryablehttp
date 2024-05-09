@@ -395,6 +395,9 @@ type Backoff func(min, max time.Duration, attemptNum int, resp *http.Response) t
 // attempted. If overriding this, be sure to close the body if needed.
 type ErrorHandler func(resp *http.Response, err error, numTries int) (*http.Response, error)
 
+// PrepareRetry is called before retry operation. It can be used for example to re-sign the request
+type PrepareRetry func(req *http.Request) error
+
 // Client is used to make HTTP requests. It adds additional functionality
 // like automatic retries to tolerate minor outages.
 type Client struct {
@@ -422,6 +425,9 @@ type Client struct {
 
 	// ErrorHandler specifies the custom error handler to use, if any
 	ErrorHandler ErrorHandler
+
+	// PrepareRetry can prepare the request for retry operation, for example re-sign it
+	PrepareRetry PrepareRetry
 
 	loggerInit sync.Once
 	clientInit sync.Once
@@ -653,10 +659,10 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	var resp *http.Response
 	var attempt int
 	var shouldRetry bool
-	var doErr, respErr, checkErr error
+	var doErr, respErr, checkErr, prepareErr error
 
 	for i := 0; ; i++ {
-		doErr, respErr = nil, nil
+		doErr, respErr, prepareErr = nil, nil, nil
 		attempt++
 
 		// Always rewind the request body when non-nil.
@@ -763,17 +769,26 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		// without racing against the closeBody call in persistConn.writeLoop.
 		httpreq := *req.Request
 		req.Request = &httpreq
+
+		if c.PrepareRetry != nil {
+			if err := c.PrepareRetry(req.Request); err != nil {
+				prepareErr = err
+				break
+			}
+		}
 	}
 
 	// this is the closest we have to success criteria
-	if doErr == nil && respErr == nil && checkErr == nil && !shouldRetry {
+	if doErr == nil && respErr == nil && checkErr == nil && prepareErr == nil && !shouldRetry {
 		return resp, nil
 	}
 
 	defer c.HTTPClient.CloseIdleConnections()
 
 	var err error
-	if checkErr != nil {
+	if prepareErr != nil {
+		err = prepareErr
+	} else if checkErr != nil {
 		err = checkErr
 	} else if respErr != nil {
 		err = respErr
