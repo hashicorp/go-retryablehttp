@@ -6,7 +6,7 @@ package retryablehttp
 import (
 	"context"
 	"errors"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -88,7 +88,7 @@ func TestRoundTripper_RoundTrip(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	if v, err := ioutil.ReadAll(resp.Body); err != nil {
+	if v, err := io.ReadAll(resp.Body); err != nil {
 		t.Fatal(err)
 	} else if string(v) != "success!" {
 		t.Fatalf("expected %q, got %q", "success!", v)
