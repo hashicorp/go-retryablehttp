@@ -493,7 +493,7 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 		return true, nil
 	}
 
-	// check if is nil to make below attributes access safe
+	// Retry when the response is nil as this can indicate a closed connection or some other temporary condition
 	if resp == nil {
 		return true, nil
 	}
