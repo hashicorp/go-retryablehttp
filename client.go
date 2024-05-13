@@ -495,7 +495,7 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 
 	// check if is nil to make below attributes access safe
 	if resp == nil {
-		return false, errors.New("response is nil")
+		return true, nil
 	}
 
 	// 429 Too Many Requests is recoverable. Sometimes the server puts
