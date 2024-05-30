@@ -1,9 +1,12 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package retryablehttp
 
 import (
 	"context"
 	"errors"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -85,7 +88,7 @@ func TestRoundTripper_RoundTrip(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	if v, err := ioutil.ReadAll(resp.Body); err != nil {
+	if v, err := io.ReadAll(resp.Body); err != nil {
 		t.Fatal(err)
 	} else if string(v) != "success!" {
 		t.Fatalf("expected %q, got %q", "success!", v)
@@ -107,12 +110,12 @@ func TestRoundTripper_TransportFailureErrorHandling(t *testing.T) {
 
 	expectedError := &url.Error{
 		Op:  "Get",
-		URL: "http://this-url-does-not-exist-ed2fb.com/",
+		URL: "http://999.999.999.999:999/",
 		Err: &net.OpError{
 			Op:  "dial",
 			Net: "tcp",
 			Err: &net.DNSError{
-				Name:       "this-url-does-not-exist-ed2fb.com",
+				Name:       "999.999.999.999",
 				Err:        "no such host",
 				IsNotFound: true,
 			},
@@ -121,10 +124,10 @@ func TestRoundTripper_TransportFailureErrorHandling(t *testing.T) {
 
 	// Get the standard client and execute the request.
 	client := retryClient.StandardClient()
-	_, err := client.Get("http://this-url-does-not-exist-ed2fb.com/")
+	_, err := client.Get("http://999.999.999.999:999/")
 
 	// assert expectations
-	if !reflect.DeepEqual(normalizeError(err), expectedError) {
+	if !reflect.DeepEqual(expectedError, normalizeError(err)) {
 		t.Fatalf("expected %q, got %q", expectedError, err)
 	}
 }
