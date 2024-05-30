@@ -2,7 +2,7 @@
 
 BUG FIXES:
 
-- client: avoid potentially leaking basic authentication credentials if they are embedded in the URL (#158)
+- client: avoid potentially leaking URL-embedded basic authentication credentials in logs (#158)
 
 ## 0.7.6 (May 9, 2024)
 
