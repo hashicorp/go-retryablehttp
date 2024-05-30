@@ -1,3 +1,9 @@
+## 0.7.7 (May 30, 2024)
+
+BUG FIXES:
+
+- client: avoid potentially leaking basic authentication credentials if they are embedded in the URL (#158)
+
 ## 0.7.6 (May 9, 2024)
 
 ENHANCEMENTS:
