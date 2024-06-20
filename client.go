@@ -41,7 +41,7 @@ import (
 	"sync"
 	"time"
 
-	cleanhttp "github.com/hashicorp/go-cleanhttp"
+	"github.com/hashicorp/go-cleanhttp"
 )
 
 var (
@@ -364,6 +364,48 @@ func (h hookLogger) Printf(s string, args ...interface{}) {
 	h.Info(fmt.Sprintf(s, args...))
 }
 
+// ContextLogger is an interface that provides methods for logging
+// with context. The methods accept a context.Context, a message
+// string and a variadic number of key-value pairs.
+type ContextLogger interface {
+	ErrorContext(ctx context.Context, msg string, keysAndValues ...interface{})
+	InfoContext(ctx context.Context, msg string, keysAndValues ...interface{})
+	DebugContext(ctx context.Context, msg string, keysAndValues ...interface{})
+	WarnContext(ctx context.Context, msg string, keysAndValues ...interface{})
+}
+
+// contextLogger adapts an ContextLogger to Logger for use by the existing hook functions
+// without changing the API.
+type contextLogger struct {
+	logger ContextLogger
+}
+
+// NewContextLogger returns a new contextLogger
+// for example: NewContextLogger(slog.Default())
+func NewContextLogger(logger ContextLogger) ContextLogger {
+	return &contextLogger{logger: logger}
+}
+
+func (s contextLogger) ErrorContext(ctx context.Context, msg string, keysAndValues ...interface{}) {
+	s.logger.ErrorContext(ctx, msg, keysAndValues...)
+}
+
+func (s contextLogger) InfoContext(ctx context.Context, msg string, keysAndValues ...interface{}) {
+	s.logger.InfoContext(ctx, msg, keysAndValues...)
+}
+
+func (s contextLogger) DebugContext(ctx context.Context, msg string, keysAndValues ...interface{}) {
+	s.logger.DebugContext(ctx, msg, keysAndValues...)
+}
+
+func (s contextLogger) WarnContext(ctx context.Context, msg string, keysAndValues ...interface{}) {
+	s.logger.WarnContext(ctx, msg, keysAndValues...)
+}
+
+func (s contextLogger) Printf(msg string, keysAndValues ...interface{}) {
+	s.logger.InfoContext(context.Background(), msg, keysAndValues...)
+}
+
 // RequestLogHook allows a function to run before each retry. The HTTP
 // request which will be made, and the retry number (0 for the initial
 // request) are available to users. The internal logger is exposed to
@@ -456,11 +498,11 @@ func (c *Client) logger() interface{} {
 		}
 
 		switch c.Logger.(type) {
-		case Logger, LeveledLogger:
+		case Logger, LeveledLogger, ContextLogger:
 			// ok
 		default:
 			// This should happen in dev when they are setting Logger and work on code, not in prod.
-			panic(fmt.Sprintf("invalid logger type passed, must be Logger or LeveledLogger, was %T", c.Logger))
+			panic(fmt.Sprintf("invalid logger type passed, must in Logger, LeveledLogger, ContextLogger, was %T", c.Logger))
 		}
 	})
 
@@ -657,6 +699,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 	if logger != nil {
 		switch v := logger.(type) {
+		case ContextLogger:
+			v.DebugContext(req.Context(), "performing request", "method", req.Method, "url", redactURL(req.URL))
 		case LeveledLogger:
 			v.Debug("performing request", "method", req.Method, "url", redactURL(req.URL))
 		case Logger:
@@ -689,6 +733,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		if c.RequestLogHook != nil {
 			switch v := logger.(type) {
+			case ContextLogger:
+				c.RequestLogHook(contextLogger{v}, req.Request, i)
 			case LeveledLogger:
 				c.RequestLogHook(hookLogger{v}, req.Request, i)
 			case Logger:
@@ -714,6 +760,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		}
 		if err != nil {
 			switch v := logger.(type) {
+			case ContextLogger:
+				v.ErrorContext(req.Context(), "request failed", "error", err, "method", req.Method, "url", redactURL(req.URL))
 			case LeveledLogger:
 				v.Error("request failed", "error", err, "method", req.Method, "url", redactURL(req.URL))
 			case Logger:
@@ -725,6 +773,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			if c.ResponseLogHook != nil {
 				// Call the response logger function if provided.
 				switch v := logger.(type) {
+				case ContextLogger:
+					c.ResponseLogHook(nil, resp)
 				case LeveledLogger:
 					c.ResponseLogHook(hookLogger{v}, resp)
 				case Logger:
@@ -758,6 +808,8 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 				desc = fmt.Sprintf("%s (status: %d)", desc, resp.StatusCode)
 			}
 			switch v := logger.(type) {
+			case ContextLogger:
+				v.DebugContext(req.Context(), "retrying request", "request", desc, "timeout", wait, "remaining", remain)
 			case LeveledLogger:
 				v.Debug("retrying request", "request", desc, "timeout", wait, "remaining", remain)
 			case Logger:
@@ -832,6 +884,8 @@ func (c *Client) drainBody(body io.ReadCloser) {
 	if err != nil {
 		if c.logger() != nil {
 			switch v := c.logger().(type) {
+			case ContextLogger:
+				v.ErrorContext(context.Background(), "error reading response body", "error", err)
 			case LeveledLogger:
 				v.Error("error reading response body", "error", err)
 			case Logger:
