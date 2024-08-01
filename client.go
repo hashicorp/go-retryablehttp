@@ -774,7 +774,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 				// Call the response logger function if provided.
 				switch v := logger.(type) {
 				case ContextLogger:
-					c.ResponseLogHook(nil, resp)
+					c.ResponseLogHook(contextLogger{v}, resp)
 				case LeveledLogger:
 					c.ResponseLogHook(hookLogger{v}, resp)
 				case Logger:
