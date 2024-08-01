@@ -377,6 +377,7 @@ type ContextLogger interface {
 // contextLogger adapts an ContextLogger to Logger for use by the existing hook functions
 // without changing the API.
 type contextLogger struct {
+	ctx    context.Context
 	logger ContextLogger
 }
 
@@ -403,7 +404,7 @@ func (s contextLogger) WarnContext(ctx context.Context, msg string, keysAndValue
 }
 
 func (s contextLogger) Printf(msg string, keysAndValues ...interface{}) {
-	s.logger.InfoContext(context.Background(), msg, keysAndValues...)
+	s.logger.InfoContext(s.ctx, msg, keysAndValues...)
 }
 
 // RequestLogHook allows a function to run before each retry. The HTTP
@@ -734,7 +735,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if c.RequestLogHook != nil {
 			switch v := logger.(type) {
 			case ContextLogger:
-				c.RequestLogHook(contextLogger{v}, req.Request, i)
+				c.RequestLogHook(contextLogger{req.Context(), v}, req.Request, i)
 			case LeveledLogger:
 				c.RequestLogHook(hookLogger{v}, req.Request, i)
 			case Logger:
@@ -774,7 +775,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 				// Call the response logger function if provided.
 				switch v := logger.(type) {
 				case ContextLogger:
-					c.ResponseLogHook(contextLogger{v}, resp)
+					c.ResponseLogHook(contextLogger{req.Context(), v}, resp)
 				case LeveledLogger:
 					c.ResponseLogHook(hookLogger{v}, resp)
 				case Logger:
@@ -798,7 +799,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		// We're going to retry, consume any response to reuse the connection.
 		if doErr == nil {
-			c.drainBody(resp.Body)
+			c.drainBody(req.Context(), resp.Body)
 		}
 
 		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
@@ -863,7 +864,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	// By default, we close the response body and return an error without
 	// returning the response
 	if resp != nil {
-		c.drainBody(resp.Body)
+		c.drainBody(req.Context(), resp.Body)
 	}
 
 	// this means CheckRetry thought the request was a failure, but didn't
@@ -878,14 +879,14 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 }
 
 // Try to read the response body so we can reuse this connection.
-func (c *Client) drainBody(body io.ReadCloser) {
+func (c *Client) drainBody(ctx context.Context, body io.ReadCloser) {
 	defer body.Close()
 	_, err := io.Copy(io.Discard, io.LimitReader(body, respReadLimit))
 	if err != nil {
 		if c.logger() != nil {
 			switch v := c.logger().(type) {
 			case ContextLogger:
-				v.ErrorContext(context.Background(), "error reading response body", "error", err)
+				v.ErrorContext(ctx, "error reading response body", "error", err)
 			case LeveledLogger:
 				v.Error("error reading response body", "error", err)
 			case Logger:
