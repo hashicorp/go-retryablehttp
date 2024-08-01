@@ -377,34 +377,28 @@ type ContextLogger interface {
 // contextLogger adapts an ContextLogger to Logger for use by the existing hook functions
 // without changing the API.
 type contextLogger struct {
-	ctx    context.Context
-	logger ContextLogger
-}
-
-// NewContextLogger returns a new contextLogger
-// for example: NewContextLogger(slog.Default())
-func NewContextLogger(logger ContextLogger) ContextLogger {
-	return &contextLogger{logger: logger}
+	context.Context
+	ContextLogger
 }
 
 func (s contextLogger) ErrorContext(ctx context.Context, msg string, keysAndValues ...interface{}) {
-	s.logger.ErrorContext(ctx, msg, keysAndValues...)
+	s.ErrorContext(ctx, msg, keysAndValues...)
 }
 
 func (s contextLogger) InfoContext(ctx context.Context, msg string, keysAndValues ...interface{}) {
-	s.logger.InfoContext(ctx, msg, keysAndValues...)
+	s.InfoContext(ctx, msg, keysAndValues...)
 }
 
 func (s contextLogger) DebugContext(ctx context.Context, msg string, keysAndValues ...interface{}) {
-	s.logger.DebugContext(ctx, msg, keysAndValues...)
+	s.DebugContext(ctx, msg, keysAndValues...)
 }
 
 func (s contextLogger) WarnContext(ctx context.Context, msg string, keysAndValues ...interface{}) {
-	s.logger.WarnContext(ctx, msg, keysAndValues...)
+	s.WarnContext(ctx, msg, keysAndValues...)
 }
 
 func (s contextLogger) Printf(msg string, keysAndValues ...interface{}) {
-	s.logger.InfoContext(s.ctx, msg, keysAndValues...)
+	s.InfoContext(s.Context, msg, keysAndValues...)
 }
 
 // RequestLogHook allows a function to run before each retry. The HTTP
