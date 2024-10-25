@@ -442,7 +442,7 @@ type PrepareRetry func(req *http.Request) error
 // like automatic retries to tolerate minor outages.
 type Client struct {
 	HTTPClient *http.Client // Internal HTTP client.
-	Logger     interface{}  // Customer logger instance. Can be either Logger or LeveledLogger
+	Logger     interface{}  // Customer logger instance. Supports Logger, LeveledLogger, or ContextLogger.
 
 	RetryWaitMin time.Duration // Minimum time to wait
 	RetryWaitMax time.Duration // Maximum time to wait
