@@ -570,6 +570,9 @@ func TestClient_RequestLogHook(t *testing.T) {
 	t.Run("RequestLogHook successfully called with nil typed LeveledLogger", func(t *testing.T) {
 		testClientRequestLogHook(t, LeveledLogger(nil))
 	})
+	t.Run("RequestLogHook successfully called with nil typed ContextLogger", func(t *testing.T) {
+		testClientRequestLogHook(t, ContextLogger(nil))
+	})
 }
 
 func testClientRequestLogHook(t *testing.T, logger interface{}) {
@@ -638,6 +641,10 @@ func TestClient_ResponseLogHook(t *testing.T) {
 	t.Run("ResponseLogHook successfully called with nil typed LeveledLogger", func(t *testing.T) {
 		buf := new(bytes.Buffer)
 		testClientResponseLogHook(t, LeveledLogger(nil), buf)
+	})
+	t.Run("ResponseLogHook successfully called with nil typed ContextLogger", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+		testClientResponseLogHook(t, ContextLogger(nil), buf)
 	})
 }
 
