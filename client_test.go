@@ -223,6 +223,11 @@ func testClientDo(t *testing.T, body interface{}) {
 		t.Fatalf("err: %v", err)
 	}
 	defer list.Close()
+	/*go func() {
+		if err := http.Serve(list, handler); err != nil {
+			log.Fatal(err)
+		}
+	}()*/
 	go http.Serve(list, handler)
 
 	// Wait again
@@ -646,10 +651,14 @@ func testClientResponseLogHook(t *testing.T, l interface{}, buf *bytes.Buffer) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if time.Now().After(passAfter) {
 			w.WriteHeader(200)
-			w.Write([]byte("test_200_body"))
+			if _, err := w.Write([]byte("test_200_body")); err != nil {
+				panic(err)
+			}
 		} else {
 			w.WriteHeader(500)
-			w.Write([]byte("test_500_body"))
+			if _, err := w.Write([]byte("test_500_body")); err != nil {
+				panic(err)
+			}
 		}
 	}))
 	defer ts.Close()
@@ -725,7 +734,9 @@ func TestClient_NewRequestWithContext(t *testing.T) {
 func TestClient_RequestWithContext(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
-		w.Write([]byte("test_200_body"))
+		if _, err := w.Write([]byte("test_200_body")); err != nil {
+			panic(err)
+		}
 	}))
 	defer ts.Close()
 
