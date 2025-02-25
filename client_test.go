@@ -654,12 +654,12 @@ func testClientResponseLogHook(t *testing.T, l interface{}, buf *bytes.Buffer) {
 		if time.Now().After(passAfter) {
 			w.WriteHeader(200)
 			if _, err := w.Write([]byte("test_200_body")); err != nil {
-				panic(err)
+				t.Fatalf("failed to write: %v", err)
 			}
 		} else {
 			w.WriteHeader(500)
 			if _, err := w.Write([]byte("test_500_body")); err != nil {
-				panic(err)
+				t.Fatalf("failed to write: %v", err)
 			}
 		}
 	}))
@@ -737,7 +737,7 @@ func TestClient_RequestWithContext(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		if _, err := w.Write([]byte("test_200_body")); err != nil {
-			panic(err)
+			t.Fatalf("failed to write: %v", err)
 		}
 	}))
 	defer ts.Close()

@@ -66,7 +66,7 @@ func TestRoundTripper_RoundTrip(t *testing.T) {
 		} else {
 			w.WriteHeader(200)
 			if _, err := w.Write([]byte("success!")); err != nil {
-				panic(err)
+				t.Fatalf("failed to write: %v", err)
 			}
 		}
 	}))
