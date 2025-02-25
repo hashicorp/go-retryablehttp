@@ -223,12 +223,14 @@ func testClientDo(t *testing.T, body interface{}) {
 		t.Fatalf("err: %v", err)
 	}
 	defer list.Close()
-	/*go func() {
-		if err := http.Serve(list, handler); err != nil {
-			log.Fatal(err)
+	errors := make(chan error)
+	go func() {
+		err := http.Serve(list, handler)
+		if err != nil {
+			errors <- err
+			return
 		}
-	}()*/
-	go http.Serve(list, handler)
+	}()
 
 	// Wait again
 	select {
