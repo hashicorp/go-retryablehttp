@@ -29,3 +29,6 @@ jobs:
 
       - name: Display coverage report
         run: go tool cover -func=coverage.out
+      
+      - name: Build Go
+        run: go build ./...
