@@ -369,9 +369,14 @@ func TestClient_Do_WithPrepareRetry(t *testing.T) {
 	}
 
 	var prepareChecks int
-	client.PrepareRetry = func(req *http.Request) error {
+	client.PrepareRetry = func(req *http.Request, resp *http.Response) error {
 		prepareChecks++
 		req.Header.Set("foo", strconv.Itoa(prepareChecks))
+
+		lastCount := resp.Header.Get("bar")
+		if lastCount != "" && lastCount != strconv.Itoa(prepareChecks) {
+			return errors.New("prepare check failed")
+		}
 		return nil
 	}
 
@@ -423,6 +428,19 @@ func TestClient_Do_WithPrepareRetry(t *testing.T) {
 			name: "handler succeeds on second attempt",
 			handler: func(*http.Response) error {
 				if shouldSucceed {
+					return nil
+				}
+				shouldSucceed = true
+				return errors.New("retryable failure")
+			},
+			expectedChecks:        4,
+			expectedPrepareChecks: 1,
+		},
+		{
+			name: "request succeeds when matches with response",
+			handler: func(resp *http.Response) error {
+				if shouldSucceed {
+					resp.Header.Set("bar", strconv.Itoa(prepareChecks))
 					return nil
 				}
 				shouldSucceed = true
