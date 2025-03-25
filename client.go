@@ -670,7 +670,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	var doErr, respErr, checkErr, prepareErr error
 
 	for i := 0; ; i++ {
-		//doErr, respErr, prepareErr = nil, nil, nil
+		doErr, respErr, prepareErr = nil, nil, nil
 		attempt++
 
 		// Always rewind the request body when non-nil.

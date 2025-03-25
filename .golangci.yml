@@ -1,0 +1,8 @@
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - staticcheck
+    - gosimple
+    - govet
+output_format: colored-line-number
