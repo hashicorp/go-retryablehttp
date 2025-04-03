@@ -1,0 +1,37 @@
+name: Unit tests 
+on:
+  pull_request:
+    types: ['opened', 'synchronize']
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.23', '1.22']
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Setup Go
+        uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # v5.0.1
+        with:
+          go-version: ${{matrix.go-version}}
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5
+
+      - name: Run unit tests and generate coverage report
+        run: make test
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+         path: coverage.out
+         name: Coverage-report-${{matrix.go-version}}
+
+      - name: Display coverage test
+        run: go tool cover -func=coverage.out
+
+      - name: Build Go
+        run: go build ./...
