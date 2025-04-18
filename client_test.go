@@ -896,6 +896,138 @@ func TestClient_DefaultBackoff(t *testing.T) {
 	}
 }
 
+func TestClient_ExponentialJitterBackoff(t *testing.T) {
+	const retriableStatusCode int = http.StatusServiceUnavailable
+
+	t.Run("with non-empty first value of Retry-After header in response", func(t *testing.T) {
+		response := testharness.FakeHTTPResponse(retriableStatusCode, nil)
+		response.Header.Add("Retry-After", "42")
+		backoff := ExponentialJitterBackoff(retryWaitMin, retryWaitMax, 3, response)
+
+		t.Run("returns default backoff", func(t *testing.T) {
+			assert.Equal(t, 42*time.Second, backoff)
+		})
+	})
+
+	invalidRetryAfterHeaderCases := []struct {
+		name         string
+		makeResponse func() *http.Response
+	}{
+		{
+			name: "with empty first value of Retry-After header in response",
+			makeResponse: func() *http.Response {
+				response := testharness.FakeHTTPResponse(retriableStatusCode, nil)
+				response.Header.Set("Retry-After", "")
+				return response
+			},
+		},
+		{
+			name: "without Retry-After header in response",
+			makeResponse: func() *http.Response {
+				return testharness.FakeHTTPResponse(retriableStatusCode, nil)
+			},
+		},
+		{
+			name: "with nil response",
+			makeResponse: func() *http.Response {
+				return nil
+			},
+		},
+	}
+
+	for _, irahc := range invalidRetryAfterHeaderCases {
+		t.Run(irahc.name, func(t *testing.T) {
+			attemptNumCases := []struct {
+				name                         string
+				attemptNum                   int
+				expectedBackoffWithoutJitter time.Duration
+			}{
+				{
+					name:                         "with first attempt",
+					attemptNum:                   0,
+					expectedBackoffWithoutJitter: retryWaitMin,
+				},
+				{
+					name:                         "with low attempt number",
+					attemptNum:                   3,
+					expectedBackoffWithoutJitter: 16 * time.Second,
+				},
+				{
+					name:                         "with high attempt number",
+					attemptNum:                   10,
+					expectedBackoffWithoutJitter: retryWaitMax,
+				},
+			}
+
+			for _, anc := range attemptNumCases {
+				t.Run(anc.name, func(t *testing.T) {
+					backoff := ExponentialJitterBackoff(defaultRetryWaitMin, defaultRetryWaitMax, anc.attemptNum, irahc.makeResponse())
+					expectedJitterDelta := float64(anc.expectedBackoffWithoutJitter) * 0.25
+					expectedMinTime := anc.expectedBackoffWithoutJitter - time.Duration(expectedJitterDelta)
+					expectedMaxTime := anc.expectedBackoffWithoutJitter + time.Duration(expectedJitterDelta)
+
+					t.Run("returns exponential backoff with jitter, clamped within min and max limits", func(t *testing.T) {
+						assert.GreaterOrEqual(t, backoff, max(expectedMinTime, retryWaitMin))
+						assert.LessOrEqual(t, backoff, min(expectedMaxTime, retryWaitMax))
+					})
+				})
+			}
+		})
+	}
+}
+
+func Test_clampDuration(t *testing.T) {
+	const (
+		minDuration time.Duration = 500 * time.Millisecond
+		maxDuration time.Duration = 10 * time.Minute
+	)
+
+	testCases := []struct {
+		name                    string
+		errorMessage            string
+		duration                time.Duration
+		expectedClampedDuration time.Duration
+	}{
+		{
+			name:                    "with duration below min value",
+			errorMessage:            "should return the min value",
+			duration:                60 * time.Microsecond,
+			expectedClampedDuration: minDuration,
+		},
+		{
+			name:                    "with duration equal to min value",
+			errorMessage:            "should return the min value",
+			duration:                minDuration,
+			expectedClampedDuration: minDuration,
+		},
+		{
+			name:                    "with duration strictly within min and max range",
+			errorMessage:            "should return the given value",
+			duration:                45 * time.Second,
+			expectedClampedDuration: 45 * time.Second,
+		},
+		{
+			name:                    "with duration equal to max value",
+			errorMessage:            "should return the max value",
+			duration:                maxDuration,
+			expectedClampedDuration: maxDuration,
+		},
+		{
+			name:                    "with duration above max value",
+			errorMessage:            "should return the max value",
+			duration:                2 * time.Hour,
+			expectedClampedDuration: maxDuration,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			duration := clampDuration(tc.duration, minDuration, maxDuration)
+			assert.Equal(t, tc.expectedClampedDuration, duration, tc.errorMessage)
+		})
+	}
+}
+
 func TestClient_DefaultRetryPolicy_TLS(t *testing.T) {
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
