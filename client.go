@@ -638,6 +638,36 @@ func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Resp
 	return time.Duration(jitterMin * int64(attemptNum))
 }
 
+// ExponentialJitterBackoff is an extension of DefaultBackoff that applies
+// a jitter to avoid thundering herd.
+func ExponentialJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+	baseBackoff := DefaultBackoff(min, max, attemptNum, resp)
+
+	if resp != nil {
+		if retryAfterHeaders := resp.Header["Retry-After"]; len(retryAfterHeaders) > 0 && retryAfterHeaders[0] != "" {
+			return baseBackoff
+		}
+	}
+
+	// Seed randomization; it's OK to do it every time
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	jitter := rnd.Float64()*0.5 - 0.25 // Random value between -0.25 e +0.25
+	jitteredSleep := time.Duration(float64(baseBackoff) * (1.0 + jitter))
+
+	return clampDuration(jitteredSleep, min, max)
+}
+
+func clampDuration(d, min, max time.Duration) time.Duration {
+	if d < min {
+		return min
+	}
+	if d > max {
+		return max
+	}
+	return d
+}
+
 // PassthroughErrorHandler is an ErrorHandler that directly passes through the
 // values from the net/http library for the final request. The body is not
 // closed.
