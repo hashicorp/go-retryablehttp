@@ -523,10 +523,13 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 		return true, nil
 	}
 
-	// 429 Too Many Requests is recoverable. Sometimes the server puts
-	// a Retry-After response header to indicate when the server is
-	// available to start processing request from client.
-	if resp.StatusCode == http.StatusTooManyRequests {
+	// 429 Too Many Requests and 409 Concurrency Conflict are recoverable errors.
+	// In the case of a 429, the server sometimes includes a Retry-After response header
+	// to indicate when it will be available to start processing requests from the client.
+	// In the case of a 409, if there are more than one concurrent request,
+	// the server is unable to serve that request. In that case,
+	// we can use an exponential backoff strategy (1 sec, 2 sec, 4 sec, 8 sec, 16 sec…).
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusConflict {
 		return true, nil
 	}
 
