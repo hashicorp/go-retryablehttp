@@ -779,7 +779,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		req.Request = &httpreq
 
 		if c.PrepareRetry != nil {
-			if err := c.PrepareRetry(req.Request, attempt); err != nil {
+			if err := c.PrepareRetry(req.Request, i); err != nil {
 				prepareErr = err
 				break
 			}
