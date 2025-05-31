@@ -871,26 +871,12 @@ func (c *Client) Head(url string) (*http.Response, error) {
 
 // Post is a shortcut for doing a POST request without making a new client.
 // The bodyType parameter sets the "Content-Type" header of the request.
-// Common content type values include:
-//   - "application/json"          : For JSON-encoded data
-//   - "application/xml"           : For XML payloads
-//   - "text/plain"                : For plain text
-//   - "application/octet-stream"  : For binary data
-//   - "application/x-www-form-urlencoded": For form submission data
-//   - "multipart/form-data"       : For file uploads and complex forms
 func Post(url, bodyType string, body interface{}) (*http.Response, error) {
 	return defaultClient.Post(url, bodyType, body)
 }
 
 // Post is a convenience method for doing simple POST requests.
 // The bodyType parameter sets the "Content-Type" header of the request.
-// Common content type values include:
-//   - "application/json"          : For JSON-encoded data
-//   - "application/xml"           : For XML payloads
-//   - "text/plain"                : For plain text
-//   - "application/octet-stream"  : For binary data
-//   - "application/x-www-form-urlencoded": For form submission data
-//   - "multipart/form-data"       : For file uploads and complex forms
 func (c *Client) Post(url, bodyType string, body interface{}) (*http.Response, error) {
 	req, err := NewRequest("POST", url, body)
 	if err != nil {
