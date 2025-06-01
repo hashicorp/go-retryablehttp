@@ -376,9 +376,9 @@ func TestClient_Do_WithPrepareRetry(t *testing.T) {
 	}
 
 	var prepareChecks int
-	client.PrepareRetry = func(req *http.Request) error {
+	client.PrepareRetry = func(req *http.Request, numTries int) error {
 		prepareChecks++
-		req.Header.Set("foo", strconv.Itoa(prepareChecks))
+		req.Header.Set("foo", strconv.Itoa(numTries))
 		return nil
 	}
 
