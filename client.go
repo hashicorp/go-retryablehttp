@@ -640,13 +640,21 @@ func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Resp
 
 // RetryHeaderLinearJitterBackoff provides a callback for Client.Backoff which
 // checks for the existence of a Retry-After header in the response, and if it
-// exists, returns the value from that header. If the Retry-After header is not
-// present, it falls back to LinearJitterBackoff.
+// exists, returns a value between the Retry-After value and the maximum.
+// If the Retry-After header is not present, it falls back to LinearJitterBackoff.
 func RetryHeaderLinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
 	if resp != nil {
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
 			if sleep, ok := parseRetryAfterHeader(resp.Header["Retry-After"]); ok {
-				return sleep
+				if sleep < min {
+					// if the Retry-After value is less than min, use the same
+					// logic as LinearJitterBackoff
+					return LinearJitterBackoff(min, max, attemptNum, resp)
+				} else {
+					// if the Retry-After value is greater than or equal to min,
+					// return a jittered value between the Retry-After value and max
+					return LinearJitterBackoff(sleep, max, 0, resp)
+				}
 			}
 		}
 	}

@@ -1150,7 +1150,8 @@ func TestBackoff_RetryHeaderLinearJitterBackoff(t *testing.T) {
 		max          time.Duration
 		headers      http.Header
 		responseCode int
-		expect       time.Duration
+		expectMin    time.Duration
+		expectMax    time.Duration
 	}{
 		{
 			name:         "429 no retry header",
@@ -1158,7 +1159,8 @@ func TestBackoff_RetryHeaderLinearJitterBackoff(t *testing.T) {
 			max:          time.Second,
 			headers:      http.Header{},
 			responseCode: http.StatusTooManyRequests,
-			expect:       time.Second,
+			expectMin:    time.Second,
+			expectMax:    time.Second,
 		},
 		{
 			name:         "503 no retry header",
@@ -1166,7 +1168,8 @@ func TestBackoff_RetryHeaderLinearJitterBackoff(t *testing.T) {
 			max:          time.Second,
 			headers:      http.Header{},
 			responseCode: http.StatusServiceUnavailable,
-			expect:       time.Second,
+			expectMin:    time.Second,
+			expectMax:    time.Second,
 		},
 		{
 			name: "429 retry header",
@@ -1176,7 +1179,8 @@ func TestBackoff_RetryHeaderLinearJitterBackoff(t *testing.T) {
 				"Retry-After": []string{"2"},
 			},
 			responseCode: http.StatusTooManyRequests,
-			expect:       2 * time.Second,
+			expectMin:    2 * time.Second,
+			expectMax:    2 * time.Second,
 		},
 		{
 			name: "503 retry header",
@@ -1186,7 +1190,8 @@ func TestBackoff_RetryHeaderLinearJitterBackoff(t *testing.T) {
 				"Retry-After": []string{"2"},
 			},
 			responseCode: http.StatusServiceUnavailable,
-			expect:       2 * time.Second,
+			expectMin:    2 * time.Second,
+			expectMax:    2 * time.Second,
 		},
 		{
 			name: "502 ignore retry header",
@@ -1196,7 +1201,8 @@ func TestBackoff_RetryHeaderLinearJitterBackoff(t *testing.T) {
 				"Retry-After": []string{"2"},
 			},
 			responseCode: http.StatusBadGateway,
-			expect:       time.Second,
+			expectMin:    time.Second,
+			expectMax:    time.Second,
 		},
 		{
 			name:         "502 no retry header",
@@ -1204,7 +1210,30 @@ func TestBackoff_RetryHeaderLinearJitterBackoff(t *testing.T) {
 			max:          time.Second,
 			headers:      http.Header{},
 			responseCode: http.StatusBadGateway,
-			expect:       time.Second,
+			expectMin:    time.Second,
+			expectMax:    time.Second,
+		},
+		{
+			name: "429 retry header with jitter",
+			min:  time.Second,
+			max:  5 * time.Second,
+			headers: http.Header{
+				"Retry-After": []string{"2"},
+			},
+			responseCode: http.StatusTooManyRequests,
+			expectMin:    2 * time.Second,
+			expectMax:    5 * time.Second,
+		},
+		{
+			name: "429 retry header less than min",
+			min:  5 * time.Second,
+			max:  10 * time.Second,
+			headers: http.Header{
+				"Retry-After": []string{"2"},
+			},
+			responseCode: http.StatusTooManyRequests,
+			expectMin:    5 * time.Second,
+			expectMax:    10 * time.Second,
 		},
 	}
 	for _, tc := range testCases {
@@ -1213,8 +1242,11 @@ func TestBackoff_RetryHeaderLinearJitterBackoff(t *testing.T) {
 				StatusCode: tc.responseCode,
 				Header:     tc.headers,
 			})
-			if got != tc.expect {
-				t.Fatalf("expected %s, got %s", tc.expect, got)
+			if got < tc.expectMin {
+				t.Fatalf("expected minimum %s, got %s", tc.expectMin, got)
+			}
+			if got > tc.expectMax {
+				t.Fatalf("expected maximum %s, got %s", tc.expectMax, got)
 			}
 		})
 	}
