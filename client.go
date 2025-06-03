@@ -638,6 +638,22 @@ func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Resp
 	return time.Duration(jitterMin * int64(attemptNum))
 }
 
+// RetryHeaderLinearJitterBackoff provides a callback for Client.Backoff which
+// checks for the existence of a Retry-After header in the response, and if it
+// exists, returns the value from that header. If the Retry-After header is not
+// present, it falls back to LinearJitterBackoff.
+func RetryHeaderLinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+	if resp != nil {
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+			if sleep, ok := parseRetryAfterHeader(resp.Header["Retry-After"]); ok {
+				return sleep
+			}
+		}
+	}
+
+	return LinearJitterBackoff(min, max, attemptNum, resp)
+}
+
 // PassthroughErrorHandler is an ErrorHandler that directly passes through the
 // values from the net/http library for the final request. The body is not
 // closed.

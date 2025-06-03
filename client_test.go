@@ -1143,6 +1143,83 @@ func TestClient_PostForm(t *testing.T) {
 	resp.Body.Close()
 }
 
+func TestBackoff_RetryHeaderLinearJitterBackoff(t *testing.T) {
+	testCases := []struct {
+		name         string
+		min          time.Duration
+		max          time.Duration
+		headers      http.Header
+		responseCode int
+		expect       time.Duration
+	}{
+		{
+			name:         "429 no retry header",
+			min:          time.Second,
+			max:          time.Second,
+			headers:      http.Header{},
+			responseCode: http.StatusTooManyRequests,
+			expect:       time.Second,
+		},
+		{
+			name:         "503 no retry header",
+			min:          time.Second,
+			max:          time.Second,
+			headers:      http.Header{},
+			responseCode: http.StatusServiceUnavailable,
+			expect:       time.Second,
+		},
+		{
+			name: "429 retry header",
+			min:  time.Second,
+			max:  time.Second,
+			headers: http.Header{
+				"Retry-After": []string{"2"},
+			},
+			responseCode: http.StatusTooManyRequests,
+			expect:       2 * time.Second,
+		},
+		{
+			name: "503 retry header",
+			min:  time.Second,
+			max:  time.Second,
+			headers: http.Header{
+				"Retry-After": []string{"2"},
+			},
+			responseCode: http.StatusServiceUnavailable,
+			expect:       2 * time.Second,
+		},
+		{
+			name: "502 ignore retry header",
+			min:  time.Second,
+			max:  time.Second,
+			headers: http.Header{
+				"Retry-After": []string{"2"},
+			},
+			responseCode: http.StatusBadGateway,
+			expect:       time.Second,
+		},
+		{
+			name:         "502 no retry header",
+			min:          time.Second,
+			max:          time.Second,
+			headers:      http.Header{},
+			responseCode: http.StatusBadGateway,
+			expect:       time.Second,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := RetryHeaderLinearJitterBackoff(tc.min, tc.max, 0, &http.Response{
+				StatusCode: tc.responseCode,
+				Header:     tc.headers,
+			})
+			if got != tc.expect {
+				t.Fatalf("expected %s, got %s", tc.expect, got)
+			}
+		})
+	}
+}
+
 func TestBackoff(t *testing.T) {
 	type tcase struct {
 		min    time.Duration
