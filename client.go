@@ -919,11 +919,13 @@ func (c *Client) Head(url string) (*http.Response, error) {
 }
 
 // Post is a shortcut for doing a POST request without making a new client.
+// The bodyType parameter sets the "Content-Type" header of the request.
 func Post(url, bodyType string, body interface{}) (*http.Response, error) {
 	return defaultClient.Post(url, bodyType, body)
 }
 
 // Post is a convenience method for doing simple POST requests.
+// The bodyType parameter sets the "Content-Type" header of the request.
 func (c *Client) Post(url, bodyType string, body interface{}) (*http.Response, error) {
 	req, err := NewRequest("POST", url, body)
 	if err != nil {
