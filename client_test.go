@@ -1180,7 +1180,7 @@ func TestBackoff_RetryHeaderLinearJitterBackoff(t *testing.T) {
 			},
 			responseCode: http.StatusTooManyRequests,
 			expectMin:    2 * time.Second,
-			expectMax:    2 * time.Second,
+			expectMax:    3 * time.Second,
 		},
 		{
 			name: "503 retry header",
@@ -1191,7 +1191,7 @@ func TestBackoff_RetryHeaderLinearJitterBackoff(t *testing.T) {
 			},
 			responseCode: http.StatusServiceUnavailable,
 			expectMin:    2 * time.Second,
-			expectMax:    2 * time.Second,
+			expectMax:    3 * time.Second,
 		},
 		{
 			name: "502 ignore retry header",
@@ -1233,6 +1233,17 @@ func TestBackoff_RetryHeaderLinearJitterBackoff(t *testing.T) {
 			},
 			responseCode: http.StatusTooManyRequests,
 			expectMin:    5 * time.Second,
+			expectMax:    10 * time.Second,
+		},
+		{
+			name: "429 retry header in range",
+			min:  time.Second,
+			max:  10 * time.Second,
+			headers: http.Header{
+				"Retry-After": []string{"2"},
+			},
+			responseCode: http.StatusTooManyRequests,
+			expectMin:    time.Second,
 			expectMax:    10 * time.Second,
 		},
 	}
