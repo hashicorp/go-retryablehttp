@@ -1143,7 +1143,7 @@ func TestClient_PostForm(t *testing.T) {
 	resp.Body.Close()
 }
 
-func TestBackoff_RetryHeaderLinearJitterBackoff(t *testing.T) {
+func TestBackoff_RateLimitLinearJitterBackoff(t *testing.T) {
 	testCases := []struct {
 		name         string
 		min          time.Duration
