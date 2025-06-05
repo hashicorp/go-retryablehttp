@@ -638,31 +638,17 @@ func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Resp
 	return time.Duration(jitterMin * int64(attemptNum))
 }
 
-// RetryHeaderLinearJitterBackoff provides a callback for Client.Backoff which
-// checks for the existence of a Retry-After header in the response, and if it
-// exists, returns a value at least as large as the Retry-After value, with jitter.
-// If the Retry-After header is not present, it falls back to LinearJitterBackoff.
-func RetryHeaderLinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+// RateLimitLinearJitterBackoff wraps the retryablehttp.LinearJitterBackoff.
+// It first checks if the response status code is http.StatusTooManyRequests
+// (HTTP Code 429) or http.StatusServiceUnavailable (HTTP Code 503). If it is
+// and the response contains a Retry-After response header, it will wait the
+// amount of time specified by the header. Otherwise, this calls
+// LinearJitterBackoff.
+func RateLimitLinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
 	if resp != nil {
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
 			if sleep, ok := parseRetryAfterHeader(resp.Header["Retry-After"]); ok {
-				switch {
-				case sleep < min:
-					// do the same logic as LinearJitterBackoff
-				case sleep >= max:
-					// if the sleep is greater than our max, shift linear jitter
-					// to be between the Retry-After value and max+Retry-After
-					// value
-					max += sleep
-					min = sleep
-					attemptNum = 0
-				case sleep > min:
-					// if the sleep is greater than the minimum, make sure we
-					// that we chose a linear jitter value larger than the Retry-After
-					// value.
-					min = sleep
-					attemptNum = 0
-				}
+				return sleep
 			}
 		}
 	}
