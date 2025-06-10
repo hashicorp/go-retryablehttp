@@ -398,8 +398,15 @@ type Backoff func(min, max time.Duration, attemptNum int, resp *http.Response) t
 // attempted. If overriding this, be sure to close the body if needed.
 type ErrorHandler func(resp *http.Response, err error, numTries int) (*http.Response, error)
 
-// PrepareRetry is called before retry operation. It can be used for example to re-sign the request
-type PrepareRetry func(req *http.Request) error
+// PrepareRetry is called before the retry operation. It can be used, for example,
+// to re-sign the request. After version 0.7.7, PrepareRetry takes the retryAttempt,
+// a one-based counter that refers to the current retry attempt. The retryAttempt
+// counter would help the server and clients make informed decisions. For example,
+// - The client can send a request to a fallback host (server) after a certain number
+// 	of retries.
+// - The client can send the retry attempt in the request header, which would help
+// 	the server to process the request in any special way if needed.
+type PrepareRetry func(req *http.Request, retryAttempt int) error
 
 // Client is used to make HTTP requests. It adds additional functionality
 // like automatic retries to tolerate minor outages.
@@ -779,7 +786,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		req.Request = &httpreq
 
 		if c.PrepareRetry != nil {
-			if err := c.PrepareRetry(req.Request); err != nil {
+			if err := c.PrepareRetry(req.Request, attempt); err != nil {
 				prepareErr = err
 				break
 			}
