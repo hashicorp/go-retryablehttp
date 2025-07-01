@@ -41,7 +41,7 @@ import (
 	"sync"
 	"time"
 
-	cleanhttp "github.com/hashicorp/go-cleanhttp"
+	"github.com/hashicorp/go-cleanhttp"
 )
 
 var (
@@ -662,8 +662,7 @@ func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Respo
 	return resp, err
 }
 
-// Do wraps calling an HTTP method with retries.
-func (c *Client) Do(req *Request) (*http.Response, error) {
+func (c *Client) do(req *Request) (*http.Response, error) {
 	c.clientInit.Do(func() {
 		if c.HTTPClient == nil {
 			c.HTTPClient = cleanhttp.DefaultPooledClient()
@@ -840,6 +839,39 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 	return nil, fmt.Errorf("%s %s giving up after %d attempt(s): %w",
 		req.Method, redactURL(req.URL), attempt, err)
+}
+
+type drainReadCloser struct {
+	io.ReadCloser
+	read bool
+}
+
+func (rc *drainReadCloser) Read(p []byte) (n int, err error) {
+	n, err = rc.ReadCloser.Read(p)
+	if err == io.EOF {
+		rc.read = true
+	}
+	return
+}
+
+func (rc *drainReadCloser) Close() error {
+	if !rc.read {
+		// Use same drain logic as in drainBody
+		io.Copy(io.Discard, io.LimitReader(rc.ReadCloser, respReadLimit))
+	}
+	return rc.ReadCloser.Close()
+}
+
+// Do wraps calling an HTTP method with retries.
+func (c *Client) Do(req *Request) (*http.Response, error) {
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp != nil && resp.Body != nil {
+		resp.Body = &drainReadCloser{ReadCloser: resp.Body}
+	}
+	return resp, nil
 }
 
 // Try to read the response body so we can reuse this connection.
