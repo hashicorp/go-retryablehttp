@@ -468,7 +468,7 @@ func TestClient_Do_WithPrepareRetry(t *testing.T) {
 			if prepareChecks != tt.expectedPrepareChecks {
 				t.Fatalf("expected %d attempts of prepare check, got %d attempts", tt.expectedPrepareChecks, prepareChecks)
 			}
-			header := req.Request.Header.Get("foo")
+			header := req.Header.Get("foo")
 			if tt.expectedPrepareChecks == 0 && header != "" {
 				t.Fatalf("expected no changes to request header 'foo', but got '%s'", header)
 			}
@@ -746,7 +746,7 @@ func TestClient_RequestWithContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	ctx, cancel := context.WithCancel(req.Request.Context())
+	ctx, cancel := context.WithCancel(req.Context())
 	reqCtx := req.WithContext(ctx)
 	if reqCtx == req {
 		t.Fatal("WithContext must return a new Request object")
@@ -757,7 +757,7 @@ func TestClient_RequestWithContext(t *testing.T) {
 	called := 0
 	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
 		called++
-		return DefaultRetryPolicy(reqCtx.Request.Context(), resp, err)
+		return DefaultRetryPolicy(reqCtx.Context(), resp, err)
 	}
 
 	cancel()
