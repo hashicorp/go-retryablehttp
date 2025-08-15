@@ -242,6 +242,15 @@ func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, erro
 		}
 		contentLength = int64(len(buf))
 
+	// If a regular string, we can read it over and over via new
+	// readers
+	case string:
+		buf := body
+		bodyReader = func() (io.Reader, error) {
+			return strings.NewReader(buf), nil
+		}
+		contentLength = int64(len(buf))
+
 	// If a bytes.Buffer we can read the underlying byte slice over and
 	// over
 	case *bytes.Buffer:
