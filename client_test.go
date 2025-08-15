@@ -1403,3 +1403,16 @@ func TestClient_RedirectWithBody(t *testing.T) {
 		t.Fatalf("Expected the client to be redirected 2 times, got: %d", atomic.LoadInt32(&redirects))
 	}
 }
+
+func TestClient_baseRetryPolicy(t *testing.T) {
+	t.Parallel()
+	var response *http.Response = nil
+
+	ok, err := baseRetryPolicy(response, nil)
+	if !ok {
+		t.Fatalf("expected %v, got %v", true, ok)
+	}
+	if err != nil {
+		t.Fatalf("no error expected")
+	}
+}
