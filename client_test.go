@@ -130,6 +130,8 @@ func TestClient_Do(t *testing.T) {
 	// io.ReadSeeker
 	testClientDo(t, strings.NewReader(string(testBytes)))
 	// io.Reader
+	testClientDo(t, string(testBytes))
+	// io.Reader
 	testClientDo(t, &custReader{})
 }
 
