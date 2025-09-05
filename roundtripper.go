@@ -10,6 +10,9 @@ import (
 	"sync"
 )
 
+// ensure RoundTripper implements http.RoundTripper interface.
+var _ http.RoundTripper = (*RoundTripper)(nil)
+
 // RoundTripper implements the http.RoundTripper interface, using a retrying
 // HTTP client to execute requests.
 //

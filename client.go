@@ -266,7 +266,7 @@ func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, erro
 	case io.ReadSeeker:
 		raw := body
 		bodyReader = func() (io.Reader, error) {
-			_, err := raw.Seek(0, 0)
+			_, err := raw.Seek(0, io.SeekStart)
 			return io.NopCloser(raw), err
 		}
 		if lr, ok := raw.(LenReader); ok {
@@ -865,7 +865,7 @@ func Get(url string) (*http.Response, error) {
 
 // Get is a convenience helper for doing simple GET requests.
 func (c *Client) Get(url string) (*http.Response, error) {
-	req, err := NewRequest("GET", url, nil)
+	req, err := NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -879,7 +879,7 @@ func Head(url string) (*http.Response, error) {
 
 // Head is a convenience method for doing simple HEAD requests.
 func (c *Client) Head(url string) (*http.Response, error) {
-	req, err := NewRequest("HEAD", url, nil)
+	req, err := NewRequest(http.MethodHead, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -895,7 +895,7 @@ func Post(url, bodyType string, body interface{}) (*http.Response, error) {
 // Post is a convenience method for doing simple POST requests.
 // The bodyType parameter sets the "Content-Type" header of the request.
 func (c *Client) Post(url, bodyType string, body interface{}) (*http.Response, error) {
-	req, err := NewRequest("POST", url, body)
+	req, err := NewRequest(http.MethodPost, url, body)
 	if err != nil {
 		return nil, err
 	}
@@ -913,6 +913,15 @@ func PostForm(url string, data url.Values) (*http.Response, error) {
 // pre-filled url.Values form data.
 func (c *Client) PostForm(url string, data url.Values) (*http.Response, error) {
 	return c.Post(url, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+}
+
+// CloseIdleConnections closes any connections on its Transport which were previously
+// connected from previous requests but are now sitting idle in a "keep-alive" state.
+// It does not interrupt any connections currently in use.
+//
+// This implementation delegate the call to inner HTTPClient.
+func (c *Client) CloseIdleConnections() {
+	c.HTTPClient.CloseIdleConnections()
 }
 
 // StandardClient returns a stdlib *http.Client with a custom Transport, which
