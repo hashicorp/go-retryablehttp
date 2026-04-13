@@ -432,6 +432,13 @@ type Client struct {
 	// PrepareRetry can prepare the request for retry operation, for example re-sign it
 	PrepareRetry PrepareRetry
 
+	// RedactQueryParams, when true, strips the query string from request URLs
+	// before they appear in logs and returned errors. This is useful because
+	// query parameters often carry credentials (tokens, signatures, etc.) and
+	// leaking them into error messages or log output can be a security hazard.
+	// Userinfo passwords are always redacted regardless of this setting.
+	RedactQueryParams bool
+
 	loggerInit sync.Once
 	clientInit sync.Once
 }
@@ -675,9 +682,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	if logger != nil {
 		switch v := logger.(type) {
 		case LeveledLogger:
-			v.Debug("performing request", "method", req.Method, "url", redactURL(req.URL))
+			v.Debug("performing request", "method", req.Method, "url", c.loggableURL(req.URL))
 		case Logger:
-			v.Printf("[DEBUG] %s %s", req.Method, redactURL(req.URL))
+			v.Printf("[DEBUG] %s %s", req.Method, c.loggableURL(req.URL))
 		}
 	}
 
@@ -732,9 +739,9 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		if err != nil {
 			switch v := logger.(type) {
 			case LeveledLogger:
-				v.Error("request failed", "error", err, "method", req.Method, "url", redactURL(req.URL))
+				v.Error("request failed", "error", err, "method", req.Method, "url", c.loggableURL(req.URL))
 			case Logger:
-				v.Printf("[ERR] %s %s request failed: %v", req.Method, redactURL(req.URL), err)
+				v.Printf("[ERR] %s %s request failed: %v", req.Method, c.loggableURL(req.URL), err)
 			}
 		} else {
 			// Call this here to maintain the behavior of logging all requests,
@@ -770,7 +777,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
 		if logger != nil {
-			desc := fmt.Sprintf("%s %s", req.Method, redactURL(req.URL))
+			desc := fmt.Sprintf("%s %s", req.Method, c.loggableURL(req.URL))
 			if resp != nil {
 				desc = fmt.Sprintf("%s (status: %d)", desc, resp.StatusCode)
 			}
@@ -835,11 +842,11 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 	// communicate why
 	if err == nil {
 		return nil, fmt.Errorf("%s %s giving up after %d attempt(s)",
-			req.Method, redactURL(req.URL), attempt)
+			req.Method, c.loggableURL(req.URL), attempt)
 	}
 
 	return nil, fmt.Errorf("%s %s giving up after %d attempt(s): %w",
-		req.Method, redactURL(req.URL), attempt, err)
+		req.Method, c.loggableURL(req.URL), attempt, err)
 }
 
 // Try to read the response body so we can reuse this connection.
@@ -926,6 +933,15 @@ func (c *Client) StandardClient() *http.Client {
 // Taken from url.URL#Redacted() which was introduced in go 1.15.
 // We can switch to using it directly if we'll bump the minimum required go version.
 func redactURL(u *url.URL) string {
+	return redactURLFor(u, false)
+}
+
+// redactURLFor produces a log- and error-safe rendering of u. Userinfo
+// passwords are always redacted; when stripQuery is true the raw query and
+// fragment are also stripped so that secrets embedded in query parameters
+// (e.g. presigned-URL signatures, bearer tokens) don't leak through logs or
+// returned errors.
+func redactURLFor(u *url.URL, stripQuery bool) string {
 	if u == nil {
 		return ""
 	}
@@ -934,5 +950,16 @@ func redactURL(u *url.URL) string {
 	if _, has := ru.User.Password(); has {
 		ru.User = url.UserPassword(ru.User.Username(), "xxxxx")
 	}
+	if stripQuery {
+		ru.RawQuery = ""
+		ru.Fragment = ""
+		ru.RawFragment = ""
+	}
 	return ru.String()
+}
+
+// loggableURL returns the URL as it should appear in logs and error messages
+// for this client, honoring Client.RedactQueryParams.
+func (c *Client) loggableURL(u *url.URL) string {
+	return redactURLFor(u, c.RedactQueryParams)
 }
