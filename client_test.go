@@ -1403,3 +1403,96 @@ func TestClient_RedirectWithBody(t *testing.T) {
 		t.Fatalf("Expected the client to be redirected 2 times, got: %d", atomic.LoadInt32(&redirects))
 	}
 }
+
+func TestRedactURLFor(t *testing.T) {
+	tests := []struct {
+		name       string
+		raw        string
+		stripQuery bool
+		want       string
+	}{
+		{
+			name:       "plain_url_kept",
+			raw:        "https://example.com/a",
+			stripQuery: false,
+			want:       "https://example.com/a",
+		},
+		{
+			name:       "password_always_redacted",
+			raw:        "https://user:secret@example.com/a",
+			stripQuery: false,
+			want:       "https://user:xxxxx@example.com/a",
+		},
+		{
+			name:       "query_kept_when_strip_false",
+			raw:        "https://example.com/a?token=hunter2",
+			stripQuery: false,
+			want:       "https://example.com/a?token=hunter2",
+		},
+		{
+			name:       "query_stripped_when_strip_true",
+			raw:        "https://example.com/a?token=hunter2",
+			stripQuery: true,
+			want:       "https://example.com/a",
+		},
+		{
+			name:       "fragment_stripped_when_strip_true",
+			raw:        "https://example.com/a?k=v#frag",
+			stripQuery: true,
+			want:       "https://example.com/a",
+		},
+		{
+			name:       "password_and_query_both_redacted",
+			raw:        "https://user:secret@example.com/a?token=hunter2",
+			stripQuery: true,
+			want:       "https://user:xxxxx@example.com/a",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			u, err := url.Parse(tc.raw)
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			got := redactURLFor(u, tc.stripQuery)
+			if got != tc.want {
+				t.Fatalf("redactURLFor(%q, %v) = %q, want %q", tc.raw, tc.stripQuery, got, tc.want)
+			}
+		})
+	}
+
+	// Nil-safe path.
+	if got := redactURLFor(nil, true); got != "" {
+		t.Fatalf("redactURLFor(nil, true) = %q, want \"\"", got)
+	}
+}
+
+func TestClient_RedactQueryParams_InError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	client := NewClient()
+	client.RetryWaitMin = 10 * time.Millisecond
+	client.RetryWaitMax = 10 * time.Millisecond
+	client.RetryMax = 1
+	client.RedactQueryParams = true
+
+	req, err := NewRequest("GET", ts.URL+"/api?token=supersecret", nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	_, err = client.Do(req)
+	if err == nil {
+		t.Fatalf("expected an error after retries are exhausted")
+	}
+	if strings.Contains(err.Error(), "supersecret") {
+		t.Fatalf("error message leaked query secret: %q", err.Error())
+	}
+	if strings.Contains(err.Error(), "token=") {
+		t.Fatalf("error message still contains query params: %q", err.Error())
+	}
+}
