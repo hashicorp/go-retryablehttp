@@ -552,6 +552,9 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 	if resp != nil {
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
 			if sleep, ok := parseRetryAfterHeader(resp.Header["Retry-After"]); ok {
+				if sleep > max {
+					return max
+				}
 				return sleep
 			}
 		}
