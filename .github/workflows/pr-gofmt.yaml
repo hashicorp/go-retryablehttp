@@ -1,0 +1,23 @@
+name: Go format check
+on:
+  pull_request:
+    types: ['opened', 'synchronize']
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: ./.go-version
+
+      - name: Run go format
+        run: |-
+          files=$(gofmt -s -l .)
+          if [ -n "$files" ]; then
+            echo >&2 "The following file(s) are not gofmt compliant:"
+            echo >&2 "$files"
+            exit 1
+          fi
