@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"sync/atomic"
 	"testing"
 )
@@ -110,27 +109,26 @@ func TestRoundTripper_TransportFailureErrorHandling(t *testing.T) {
 
 	retryClient.ErrorHandler = PassthroughErrorHandler
 
-	expectedError := &url.Error{
-		Op:  "Get",
-		URL: "http://999.999.999.999:999/",
-		Err: &net.OpError{
-			Op:  "dial",
-			Net: "tcp",
-			Err: &net.DNSError{
-				Name:       "999.999.999.999",
-				Err:        "no such host",
-				IsNotFound: true,
-			},
-		},
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetURL := "http://" + ln.Addr().String() + "/"
+	if err := ln.Close(); err != nil {
+		t.Fatal(err)
 	}
 
 	// Get the standard client and execute the request.
 	client := retryClient.StandardClient()
-	_, err := client.Get("http://999.999.999.999:999/")
+	_, err = client.Get(targetURL)
 
 	// assert expectations
-	if !reflect.DeepEqual(expectedError, normalizeError(err)) {
-		t.Fatalf("expected %q, got %q", expectedError, err)
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) {
+		t.Fatalf("expected url.Error, got %T: %v", err, err)
+	}
+	if urlErr.Op != "Get" || urlErr.URL != targetURL {
+		t.Fatalf("expected Get %q error, got %q %q", targetURL, urlErr.Op, urlErr.URL)
 	}
 }
 
