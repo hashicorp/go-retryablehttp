@@ -733,6 +733,61 @@ func TestClient_NewRequestWithContext(t *testing.T) {
 	}
 }
 
+func TestClient_NewRequestWithContext_TypedNilBody(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name string
+		body interface{}
+	}{
+		{
+			name: "nil bytes buffer",
+			body: (*bytes.Buffer)(nil),
+		},
+		{
+			name: "nil bytes reader",
+			body: (*bytes.Reader)(nil),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, err := NewRequestWithContext(ctx, http.MethodPost, "/abc", tt.body)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+
+			if r.ContentLength != 0 {
+				t.Fatalf("bad ContentLength: %d", r.ContentLength)
+			}
+			if r.body != nil {
+				t.Fatal("expected typed nil body to behave like no body")
+			}
+
+			body, err := r.BodyBytes()
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			if body != nil {
+				t.Fatalf("expected nil body bytes, got %q", string(body))
+			}
+
+			rc, err := r.GetBody()
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			defer rc.Close()
+
+			got, err := io.ReadAll(rc)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			if len(got) != 0 {
+				t.Fatalf("expected empty body, got %q", string(got))
+			}
+		})
+	}
+}
+
 func TestClient_RequestWithContext(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
