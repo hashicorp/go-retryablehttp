@@ -626,6 +626,21 @@ func testClientRequestLogHook(t *testing.T, logger interface{}) {
 	}
 }
 
+func TestPassthroughErrorHandler_ReturnsResponseWithoutError(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Body:       io.NopCloser(strings.NewReader("retry me")),
+	}
+
+	gotResp, gotErr := PassthroughErrorHandler(resp, errors.New("retry stopped"), 3)
+	if gotResp != resp {
+		t.Fatalf("expected same response pointer to be returned")
+	}
+	if gotErr != nil {
+		t.Fatalf("expected nil error when response is present, got %v", gotErr)
+	}
+}
+
 func TestClient_ResponseLogHook(t *testing.T) {
 	t.Run("ResponseLogHook successfully called with hclog Logger", func(t *testing.T) {
 		buf := new(bytes.Buffer)

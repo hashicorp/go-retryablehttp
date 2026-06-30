@@ -656,9 +656,13 @@ func RateLimitLinearJitterBackoff(min, max time.Duration, attemptNum int, resp *
 }
 
 // PassthroughErrorHandler is an ErrorHandler that directly passes through the
-// values from the net/http library for the final request. The body is not
-// closed.
+// final response when one exists. This keeps standard-library callers such as
+// http.Client from discarding the response because of a non-nil error. The
+// body is not closed.
 func PassthroughErrorHandler(resp *http.Response, err error, _ int) (*http.Response, error) {
+	if resp != nil {
+		return resp, nil
+	}
 	return resp, err
 }
 
