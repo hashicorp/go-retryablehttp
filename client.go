@@ -35,6 +35,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -205,6 +206,10 @@ func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, erro
 	var bodyReader ReaderFunc
 	var contentLength int64
 
+	if isNilRawBody(rawBody) {
+		return nil, 0, nil
+	}
+
 	switch body := rawBody.(type) {
 	// If they gave us a function already, great! Use it.
 	case ReaderFunc:
@@ -299,6 +304,20 @@ func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, erro
 		return nil, 0, fmt.Errorf("cannot handle type %T", rawBody)
 	}
 	return bodyReader, contentLength, nil
+}
+
+func isNilRawBody(rawBody interface{}) bool {
+	if rawBody == nil {
+		return true
+	}
+
+	value := reflect.ValueOf(rawBody)
+	switch value.Kind() {
+	case reflect.Pointer, reflect.Func:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 // FromRequest wraps an http.Request in a retryablehttp.Request
