@@ -626,6 +626,47 @@ func testClientRequestLogHook(t *testing.T, logger interface{}) {
 	}
 }
 
+func TestClient_InvalidLoggerDoesNotPanic(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	client := NewClient()
+	client.Logger = struct{}{}
+
+	requestLogCalled := false
+	responseLogCalled := false
+	client.RequestLogHook = func(logger Logger, req *http.Request, retry int) {
+		requestLogCalled = true
+		if logger != nil {
+			t.Fatalf("expected nil logger for invalid logger type, got %T", logger)
+		}
+	}
+	client.ResponseLogHook = func(logger Logger, resp *http.Response) {
+		responseLogCalled = true
+		if logger != nil {
+			t.Fatalf("expected nil logger for invalid logger type, got %T", logger)
+		}
+	}
+
+	resp, err := client.Get(ts.URL)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	resp.Body.Close()
+
+	if !requestLogCalled {
+		t.Fatal("request log hook was not called")
+	}
+	if !responseLogCalled {
+		t.Fatal("response log hook was not called")
+	}
+	if _, ok := client.Logger.(struct{}); !ok {
+		t.Fatalf("expected original invalid logger value to remain available, got %T", client.Logger)
+	}
+}
+
 func TestClient_ResponseLogHook(t *testing.T) {
 	t.Run("ResponseLogHook successfully called with hclog Logger", func(t *testing.T) {
 		buf := new(bytes.Buffer)
