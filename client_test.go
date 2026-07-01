@@ -23,6 +23,12 @@ import (
 	"github.com/hashicorp/go-hclog"
 )
 
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
 func TestRequest(t *testing.T) {
 	// Fails on invalid request
 	_, err := NewRequest("GET", "://foo", nil)
@@ -1329,6 +1335,57 @@ func TestClient_BackoffCustom(t *testing.T) {
 	resp.Body.Close()
 	if retries != int32(client.RetryMax) {
 		t.Fatalf("expected retries: %d != %d", client.RetryMax, retries)
+	}
+}
+
+func TestClient_BackoffStopsWhenWaitWouldExceedDeadline(t *testing.T) {
+	testStaticTime(t)
+
+	client := NewClient()
+	client.RetryMax = 1
+
+	ctx, cancel := context.WithDeadline(context.Background(), timeNow().Add(500*time.Millisecond))
+	defer cancel()
+
+	req, err := NewRequestWithContext(ctx, http.MethodGet, "http://example.com", nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
+		return true, nil
+	}
+
+	backoffCalls := 0
+	client.Backoff = func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+		backoffCalls++
+		return time.Second
+	}
+
+	doCalls := 0
+	client.HTTPClient = &http.Client{
+		Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+			doCalls++
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Body:       io.NopCloser(strings.NewReader("retry later")),
+				Header:     make(http.Header),
+				Request:    r,
+			}, nil
+		}),
+	}
+
+	_, err = client.Do(req)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context deadline exceeded, got: %v", err)
+	}
+
+	if doCalls != 1 {
+		t.Fatalf("expected 1 request attempt before aborting retry wait, got %d", doCalls)
+	}
+
+	if backoffCalls != 1 {
+		t.Fatalf("expected Backoff to be consulted once, got %d", backoffCalls)
 	}
 }
 
