@@ -390,6 +390,11 @@ type CheckRetry func(ctx context.Context, resp *http.Response, err error) (bool,
 // Backoff specifies a policy for how long to wait between retries.
 // It is called after a failing request to determine the amount of time
 // that should pass before trying again.
+//
+// When a retry is going to happen, resp.Body is still open while Backoff runs
+// so callers can inspect retry hints carried in the response body. After
+// Backoff returns, the Client drains and closes that body before issuing the
+// next attempt.
 type Backoff func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration
 
 // ErrorHandler is called if retries are expired, containing the last status
@@ -763,12 +768,12 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			break
 		}
 
+		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
+
 		// We're going to retry, consume any response to reuse the connection.
 		if doErr == nil {
 			c.drainBody(resp.Body)
 		}
-
-		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
 		if logger != nil {
 			desc := fmt.Sprintf("%s %s", req.Method, redactURL(req.URL))
 			if resp != nil {
