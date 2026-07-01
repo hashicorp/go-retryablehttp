@@ -763,12 +763,18 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			break
 		}
 
+		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
+
 		// We're going to retry, consume any response to reuse the connection.
 		if doErr == nil {
 			c.drainBody(resp.Body)
 		}
 
-		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
+		if deadline, ok := req.Context().Deadline(); ok && timeNow().Add(wait).After(deadline) {
+			c.HTTPClient.CloseIdleConnections()
+			return nil, context.DeadlineExceeded
+		}
+
 		if logger != nil {
 			desc := fmt.Sprintf("%s %s", req.Method, redactURL(req.URL))
 			if resp != nil {
