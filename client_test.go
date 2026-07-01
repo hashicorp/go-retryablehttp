@@ -1332,6 +1332,50 @@ func TestClient_BackoffCustom(t *testing.T) {
 	}
 }
 
+func TestClient_BackoffCanReadResponseBody(t *testing.T) {
+	client := NewClient()
+	client.RetryMax = 1
+
+	var calls int32
+	client.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
+		return DefaultRetryPolicy(context.Background(), resp, err)
+	}
+
+	client.Backoff = func(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+		atomic.AddInt32(&calls, 1)
+
+		if resp == nil {
+			t.Fatal("expected response to be available in Backoff")
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("expected Backoff to read response body, got error: %v", err)
+		}
+
+		if string(body) != "retry-body" {
+			t.Fatalf("expected retry body %q, got %q", "retry-body", string(body))
+		}
+
+		return time.Millisecond
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, "retry-body")
+	}))
+	defer ts.Close()
+
+	_, err := client.Get(ts.URL)
+	if err == nil {
+		t.Fatal("expected retry exhaustion error")
+	}
+
+	if calls != 1 {
+		t.Fatalf("expected Backoff to be called once, got %d", calls)
+	}
+}
+
 func TestClient_StandardClient(t *testing.T) {
 	// Create a retryable HTTP client.
 	client := NewClient()
