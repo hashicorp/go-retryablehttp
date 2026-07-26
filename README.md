@@ -1,10 +1,10 @@
 go-retryablehttp
 ================
 
-[![Build Status](http://img.shields.io/travis/hashicorp/go-retryablehttp.svg?style=flat-square)][travis]
+[![Build Status](https://github.com/hashicorp/go-retryablehttp/actions/workflows/pr-unit-tests.yaml/badge.svg)][actions]
 [![Go Documentation](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)][godocs]
 
-[travis]: http://travis-ci.org/hashicorp/go-retryablehttp
+[actions]: https://github.com/hashicorp/go-retryablehttp/actions/workflows/pr-unit-tests.yaml
 [godocs]: http://godoc.org/github.com/hashicorp/go-retryablehttp
 
 The `retryablehttp` package provides a familiar HTTP client interface with
