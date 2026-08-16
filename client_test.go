@@ -833,6 +833,13 @@ func TestParseRetryAfterHeader(t *testing.T) {
 		{"two-headers", []string{"2", "3"}, time.Second * 2, true},
 		{"empty", []string{""}, 0, false},
 		{"negative", []string{"-2"}, 0, false},
+		// A seconds value large enough to overflow the nanosecond conversion
+		// used to wrap to a negative Duration, and a negative wait makes
+		// time.NewTimer fire at once -- the client then retried with no delay
+		// at all, which is the opposite of backing off.
+		{"seconds-overflow", []string{"9223372037"}, 0, false},
+		{"seconds-overflow-max-int64", []string{"9223372036854775807"}, 0, false},
+		{"seconds-largest-representable", []string{"9223372036"}, time.Second * 9223372036, true},
 		{"bad-date", []string{"Fri, 32 Dec 1999 23:59:59 GMT"}, 0, false},
 		{"bad-date-format", []string{"badbadbad"}, 0, false},
 	}

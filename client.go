@@ -585,6 +585,14 @@ func parseRetryAfterHeader(headers []string) (time.Duration, bool) {
 		if sleep < 0 { // a negative sleep doesn't make sense
 			return 0, false
 		}
+		// A Duration counts nanoseconds, so seconds beyond this overflow it and
+		// wrap to a negative value. time.NewTimer fires immediately on a
+		// negative duration, which would turn an absurd Retry-After into no
+		// wait at all -- the opposite of backing off. Treat it as unparseable
+		// so the caller falls back to its normal backoff.
+		if sleep > int64(math.MaxInt64/time.Second) {
+			return 0, false
+		}
 		return time.Second * time.Duration(sleep), true
 	}
 
