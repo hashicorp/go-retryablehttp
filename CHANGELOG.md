@@ -1,3 +1,9 @@
+## Unreleased
+
+BUG FIXES:
+
+- client: cap `Retry-After` waits in `RateLimitLinearJitterBackoff` at `RetryWaitMax`
+
 ## 0.7.7 (May 30, 2024)
 
 BUG FIXES:
