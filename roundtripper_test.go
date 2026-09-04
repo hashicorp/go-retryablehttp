@@ -4,14 +4,18 @@
 package retryablehttp
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -143,4 +147,64 @@ func normalizeError(err error) error {
 	}
 
 	return err
+}
+
+// redirectOnceError is returned by CheckRedirect so the inner http.Client.Do
+// yields both a response (the redirect) and a *url.Error, which is the
+// RoundTripper contract violation reported in issue #179.
+func redirectOnceError(*http.Request, []*http.Request) error {
+	return errors.New("stopped after 1 redirects")
+}
+
+func newRedirectingRetryClient(t *testing.T) (*Client, *httptest.Server) {
+	t.Helper()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/", http.StatusFound)
+	}))
+	t.Cleanup(ts.Close)
+
+	retryClient := NewClient()
+	retryClient.ErrorHandler = PassthroughErrorHandler
+	retryClient.HTTPClient.CheckRedirect = redirectOnceError
+	return retryClient, ts
+}
+
+func TestRoundTripper_RoundTrip_noResponseWithError(t *testing.T) {
+	retryClient, ts := newRedirectingRetryClient(t)
+
+	req, err := http.NewRequest("GET", ts.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := (&RoundTripper{Client: retryClient}).RoundTrip(req)
+	if resp != nil && err != nil {
+		resp.Body.Close()
+		t.Fatalf("RoundTrip returned both a non-nil response and error %v; http.RoundTripper forbids this", err)
+	}
+	if err == nil {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		t.Fatal("expected redirect error")
+	}
+}
+
+func TestRoundTripper_StandardClient_noResponseAndErrorLog(t *testing.T) {
+	retryClient, ts := newRedirectingRetryClient(t)
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	resp, err := retryClient.StandardClient().Get(ts.URL)
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("expected redirect error")
+	}
+	if got := buf.String(); strings.Contains(got, "RoundTripper returned a response & error") {
+		t.Fatalf("net/http logged: %q", got)
+	}
 }

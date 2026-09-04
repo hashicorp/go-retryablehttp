@@ -45,11 +45,17 @@ func (rt *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	// Execute the request.
 	resp, err := rt.Client.Do(retryableReq)
-	// If we got an error returned by standard library's `Do` method, unwrap it
-	// otherwise we will wind up erroneously re-nesting the error.
-	if _, ok := err.(*url.Error); ok {
-		return resp, errors.Unwrap(err)
+	if err != nil {
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
+		// If we got an error returned by standard library's `Do` method, unwrap it
+		// otherwise we will wind up erroneously re-nesting the error.
+		if _, ok := err.(*url.Error); ok {
+			return nil, errors.Unwrap(err)
+		}
+		return nil, err
 	}
 
-	return resp, err
+	return resp, nil
 }
