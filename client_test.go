@@ -481,6 +481,84 @@ func TestClient_Do_WithPrepareRetry(t *testing.T) {
 	}
 }
 
+type trackedResponseBody struct {
+	io.ReadCloser
+	closeCalls      int
+	readsAfterClose int
+}
+
+func (b *trackedResponseBody) Read(p []byte) (int, error) {
+	if b.closeCalls > 0 {
+		b.readsAfterClose++
+	}
+	return b.ReadCloser.Read(p)
+}
+
+func (b *trackedResponseBody) Close() error {
+	b.closeCalls++
+	return b.ReadCloser.Close()
+}
+
+func TestClient_Do_PrepareRetryError(t *testing.T) {
+	for _, protoMajor := range []int{1, 2} {
+		t.Run(fmt.Sprintf("HTTP/%d", protoMajor), func(t *testing.T) {
+			var requests int32
+			ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&requests, 1)
+				http.Error(w, "bad gateway", http.StatusBadGateway)
+			}))
+			ts.EnableHTTP2 = protoMajor == 2
+			ts.StartTLS()
+			defer ts.Close()
+
+			client := NewClient()
+			client.HTTPClient = ts.Client()
+			client.RetryWaitMin = 0
+			client.RetryWaitMax = 0
+			client.RetryMax = 1
+
+			var body *trackedResponseBody
+			client.ResponseLogHook = func(_ Logger, resp *http.Response) {
+				if resp.ProtoMajor != protoMajor {
+					t.Errorf("expected HTTP/%d, got %s", protoMajor, resp.Proto)
+				}
+				body = &trackedResponseBody{ReadCloser: resp.Body}
+				resp.Body = body
+			}
+
+			prepareErr := errors.New("prepare retry failed")
+			var prepareCalls int
+			client.PrepareRetry = func(_ *http.Request) error {
+				prepareCalls++
+				return prepareErr
+			}
+
+			resp, err := client.Get(ts.URL)
+			if !errors.Is(err, prepareErr) {
+				t.Fatalf("expected preparation error %v, got %v", prepareErr, err)
+			}
+			if resp != nil {
+				t.Errorf("expected nil response, got %v", resp)
+			}
+			if got := atomic.LoadInt32(&requests); got != 1 {
+				t.Errorf("expected 1 request, got %d", got)
+			}
+			if prepareCalls != 1 {
+				t.Errorf("expected 1 preparation call, got %d", prepareCalls)
+			}
+			if body == nil {
+				t.Fatal("expected a response body")
+			}
+			if body.closeCalls != 1 {
+				t.Errorf("expected response body to be closed once, got %d", body.closeCalls)
+			}
+			if body.readsAfterClose != 0 {
+				t.Errorf("expected no reads after closing response body, got %d", body.readsAfterClose)
+			}
+		})
+	}
+}
+
 func TestClient_Do_fails(t *testing.T) {
 	// Mock server which always responds 500.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
