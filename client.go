@@ -626,14 +626,26 @@ func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Resp
 		return min * time.Duration(attemptNum)
 	}
 
-	// Seed rand; doing this every time is fine
-	source := rand.New(rand.NewSource(int64(time.Now().Nanosecond())))
-
 	// Pick a random number that lies somewhere between the min and max and
 	// multiply by the attemptNum. attemptNum starts at zero so we always
 	// increment here. We first get a random percentage, then apply that to the
 	// difference between min and max, and add to min.
-	jitter := source.Float64() * float64(max-min)
+	//
+	// We use the package-level math/rand functions (instead of constructing a
+	// new rand.Source per call, as this function used to do) for two reasons:
+	//
+	//  1. Seeding a source from time.Now().Nanosecond() is weak: on platforms
+	//     with coarse timer resolution, or when many goroutines call this
+	//     function back-to-back (exactly the "thundering herd" scenario this
+	//     backoff is meant to protect against), multiple calls can observe the
+	//     same nanosecond value and therefore draw identical "random" jitter,
+	//     defeating the purpose of jittering the backoff.
+	//  2. Since Go 1.20, the top-level math/rand functions are automatically
+	//     seeded with random data and are safe for concurrent use, so there is
+	//     no need to manage a per-call (or shared) rand.Source by hand. This
+	//     also avoids the data race that a shared rand.Source hit in the past
+	//     (see #35/#38), without reintroducing the weak per-call seed.
+	jitter := rand.Float64() * float64(max-min)
 	jitterMin := int64(jitter) + int64(min)
 	return time.Duration(jitterMin * int64(attemptNum))
 }
