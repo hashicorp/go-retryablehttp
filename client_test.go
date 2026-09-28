@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1300,6 +1301,51 @@ func TestBackoff(t *testing.T) {
 		if v := DefaultBackoff(tc.min, tc.max, tc.i, nil); v != tc.expect {
 			t.Fatalf("bad: %#v -> %s", tc, v)
 		}
+	}
+}
+
+// TestLinearJitterBackoff_ConcurrentDiversity guards against a regression to
+// the old implementation, which seeded a fresh rand.Source from
+// time.Now().Nanosecond() on every call. That seed is weak: concurrent
+// goroutines calling LinearJitterBackoff back-to-back (the exact "thundering
+// herd" scenario the jitter exists to smooth out) could observe the same
+// nanosecond value and therefore compute identical "random" jitter. This
+// test calls LinearJitterBackoff many times concurrently and asserts the
+// results are not all identical.
+func TestLinearJitterBackoff_ConcurrentDiversity(t *testing.T) {
+	const (
+		numCalls = 200
+		min      = 1 * time.Millisecond
+		max      = 1 * time.Second
+	)
+
+	results := make([]time.Duration, numCalls)
+	var wg sync.WaitGroup
+	for i := 0; i < numCalls; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i] = LinearJitterBackoff(min, max, 0, nil)
+		}(i)
+	}
+	wg.Wait()
+
+	seen := make(map[time.Duration]struct{}, numCalls)
+	for _, d := range results {
+		if d < min || d > max {
+			t.Fatalf("jitter %s out of bounds [%s, %s]", d, min, max)
+		}
+		seen[d] = struct{}{}
+	}
+
+	// With a properly seeded, high-entropy source, numCalls concurrent draws
+	// should almost never collapse onto a handful of values. Requiring a
+	// healthy fraction of unique values (rather than all numCalls) keeps the
+	// test robust to the rare legitimate collision while still catching the
+	// old weak-seed behavior, under which many/most calls made within the
+	// same wall-clock nanosecond bucket returned the exact same duration.
+	if unique := len(seen); unique < numCalls/2 {
+		t.Fatalf("expected a diverse spread of jitter values, got only %d unique values out of %d calls: %v", unique, numCalls, results)
 	}
 }
 
