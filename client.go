@@ -35,6 +35,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -201,6 +202,15 @@ func (r *Request) WriteTo(w io.Writer) (int64, error) {
 	return io.Copy(w, body)
 }
 
+// UnsupportedBodyTypeError is returned when rawBody cannot be converted to a ReaderFunc.
+type UnsupportedBodyTypeError struct {
+	Type reflect.Type
+}
+
+func (e *UnsupportedBodyTypeError) Error() string {
+	return fmt.Sprintf("cannot handle type %v; supported types are io.Reader, []byte, *bytes.Buffer, *bytes.Reader, io.ReadSeeker, ReaderFunc, or func() (io.Reader, error)", e.Type)
+}
+
 func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, error) {
 	var bodyReader ReaderFunc
 	var contentLength int64
@@ -296,7 +306,7 @@ func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, erro
 
 	// Unrecognized type
 	default:
-		return nil, 0, fmt.Errorf("cannot handle type %T", rawBody)
+		return nil, 0, &UnsupportedBodyTypeError{Type: reflect.TypeOf(rawBody)}
 	}
 	return bodyReader, contentLength, nil
 }

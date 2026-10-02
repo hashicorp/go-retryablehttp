@@ -55,6 +55,52 @@ func TestRequest(t *testing.T) {
 	}
 }
 
+func TestRequest_unsupportedBody(t *testing.T) {
+	type dummyStruct struct {
+		Field string
+	}
+
+	testCases := []struct {
+		name         string
+		body         interface{}
+		expectedType string
+	}{
+		{
+			name:         "integer",
+			body:         123,
+			expectedType: "int",
+		},
+		{
+			name:         "struct",
+			body:         dummyStruct{Field: "foo"},
+			expectedType: "retryablehttp.dummyStruct",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := NewRequest("POST", "http://foo", tc.body)
+			if err == nil {
+				t.Fatalf("expected error for unsupported body type, got nil")
+			}
+
+			var bodyErr *UnsupportedBodyTypeError
+			if !errors.As(err, &bodyErr) {
+				t.Fatalf("expected *UnsupportedBodyTypeError, got: %T (%v)", err, err)
+			}
+
+			if bodyErr.Type.String() != tc.expectedType {
+				t.Fatalf("expected type %q, got %q", tc.expectedType, bodyErr.Type.String())
+			}
+
+			expectedMsg := fmt.Sprintf("cannot handle type %s; supported types are io.Reader, []byte, *bytes.Buffer, *bytes.Reader, io.ReadSeeker, ReaderFunc, or func() (io.Reader, error)", tc.expectedType)
+			if err.Error() != expectedMsg {
+				t.Fatalf("expected error message %q, got %q", expectedMsg, err.Error())
+			}
+		})
+	}
+}
+
 func TestFromRequest(t *testing.T) {
 	// Works with no request body
 	httpReq, err := http.NewRequest("GET", "http://foo", nil)
