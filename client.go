@@ -27,6 +27,7 @@ package retryablehttp
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -833,13 +834,40 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 	// this means CheckRetry thought the request was a failure, but didn't
 	// communicate why
-	if err == nil {
-		return nil, fmt.Errorf("%s %s giving up after %d attempt(s)",
-			req.Method, redactURL(req.URL), attempt)
+	return nil, &Error{
+		Err:      err,
+		Method:   req.Method,
+		URL:      redactURL(req.URL),
+		Attempts: attempt,
 	}
+}
 
-	return nil, fmt.Errorf("%s %s giving up after %d attempt(s): %w",
-		req.Method, redactURL(req.URL), attempt, err)
+// Error represents an error returned by Client.Do when all retry attempts fail.
+// It unwraps to the underlying error and implements the net.Error / Timeout interface.
+type Error struct {
+	Err      error
+	Method   string
+	URL      string
+	Attempts int
+}
+
+func (e *Error) Error() string {
+	if e.Err == nil {
+		return fmt.Sprintf("%s %s giving up after %d attempt(s)", e.Method, e.URL, e.Attempts)
+	}
+	return fmt.Sprintf("%s %s giving up after %d attempt(s): %s", e.Method, e.URL, e.Attempts, e.Err)
+}
+
+func (e *Error) Unwrap() error {
+	return e.Err
+}
+
+func (e *Error) Timeout() bool {
+	var timeoutErr interface{ Timeout() bool }
+	if errors.As(e.Err, &timeoutErr) {
+		return timeoutErr.Timeout()
+	}
+	return false
 }
 
 // Try to read the response body so we can reuse this connection.

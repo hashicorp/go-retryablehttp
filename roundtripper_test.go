@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestRoundTripper_implements(t *testing.T) {
@@ -143,4 +144,85 @@ func normalizeError(err error) error {
 	}
 
 	return err
+}
+
+func TestRoundTripper_TimeoutError(t *testing.T) {
+	t.Run("http_client_timeout", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(50 * time.Millisecond)
+		}))
+		defer ts.Close()
+
+		retryClient := NewClient()
+		retryClient.Logger = nil
+		retryClient.RetryMax = 1
+		retryClient.HTTPClient.Timeout = 10 * time.Millisecond
+		retryClient.RetryWaitMin = time.Millisecond
+		retryClient.RetryWaitMax = time.Millisecond
+
+		client := retryClient.StandardClient()
+		req, err := http.NewRequest(http.MethodGet, ts.URL, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = client.Do(req)
+		if err == nil {
+			t.Fatal("expected timeout error, got nil")
+		}
+
+		var urlErr *url.Error
+		if !errors.As(err, &urlErr) {
+			t.Fatalf("expected *url.Error, got: %T (%v)", err, err)
+		}
+
+		if !urlErr.Timeout() {
+			t.Fatalf("expected urlErr.Timeout() == true, got false")
+		}
+
+		var retryErr *Error
+		if !errors.As(err, &retryErr) {
+			t.Fatalf("expected *Error, got: %T (%v)", err, err)
+		}
+
+		if !retryErr.Timeout() {
+			t.Fatalf("expected retryErr.Timeout() == true, got false")
+		}
+	})
+
+	t.Run("context_deadline", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(50 * time.Millisecond)
+		}))
+		defer ts.Close()
+
+		retryClient := NewClient()
+		retryClient.Logger = nil
+		retryClient.RetryMax = 1
+		retryClient.RetryWaitMin = time.Millisecond
+		retryClient.RetryWaitMax = time.Millisecond
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+
+		client := retryClient.StandardClient()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = client.Do(req)
+		if err == nil {
+			t.Fatal("expected timeout error, got nil")
+		}
+
+		var urlErr *url.Error
+		if !errors.As(err, &urlErr) {
+			t.Fatalf("expected *url.Error, got: %T (%v)", err, err)
+		}
+
+		if !urlErr.Timeout() {
+			t.Fatalf("expected urlErr.Timeout() == true, got false")
+		}
+	})
 }
