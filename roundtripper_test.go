@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -131,6 +132,36 @@ func TestRoundTripper_TransportFailureErrorHandling(t *testing.T) {
 	// assert expectations
 	if !reflect.DeepEqual(expectedError, normalizeError(err)) {
 		t.Fatalf("expected %q, got %q", expectedError, err)
+	}
+}
+
+func TestRoundTripper_PassthroughErrorHandlerPreservesResponse(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "test_500_body", http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	retryClient := NewClient()
+	retryClient.RetryMax = 0
+	retryClient.ErrorHandler = PassthroughErrorHandler
+
+	client := retryClient.StandardClient()
+	resp, err := client.Get(ts.URL)
+	if err != nil {
+		t.Fatalf("expected nil error when a response is available, got %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed to read response body: %v", err)
+	}
+	if !strings.Contains(string(body), "test_500_body") {
+		t.Fatalf("expected response body to be preserved, got %q", body)
 	}
 }
 
