@@ -827,7 +827,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 
 	// By default, we close the response body and return an error without
 	// returning the response
-	if resp != nil {
+	if resp != nil && prepareErr == nil {
 		c.drainBody(resp.Body)
 	}
 
