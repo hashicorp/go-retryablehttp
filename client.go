@@ -523,6 +523,11 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 		return true, nil
 	}
 
+	// Retry when the response is nil as this can indicate a closed connection or some other temporary condition
+	if resp == nil {
+		return true, nil
+	}
+
 	// 429 Too Many Requests is recoverable. Sometimes the server puts
 	// a Retry-After response header to indicate when the server is
 	// available to start processing request from client.
