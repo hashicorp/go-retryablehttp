@@ -638,16 +638,17 @@ func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Resp
 	return time.Duration(jitterMin * int64(attemptNum))
 }
 
-// RateLimitLinearJitterBackoff wraps the retryablehttp.LinearJitterBackoff.
-// It first checks if the response status code is http.StatusTooManyRequests
-// (HTTP Code 429) or http.StatusServiceUnavailable (HTTP Code 503). If it is
-// and the response contains a Retry-After response header, it will wait the
-// amount of time specified by the header. Otherwise, this calls
+// RateLimitLinearJitterBackoff wraps LinearJitterBackoff.
+// If the response is 429 or 503 and includes a Retry-After header, it waits
+// for that duration, capped at max (RetryWaitMax). Otherwise it uses
 // LinearJitterBackoff.
 func RateLimitLinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
 	if resp != nil {
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
 			if sleep, ok := parseRetryAfterHeader(resp.Header["Retry-After"]); ok {
+				if sleep > max {
+					return max
+				}
 				return sleep
 			}
 		}
