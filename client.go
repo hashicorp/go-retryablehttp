@@ -432,7 +432,6 @@ type Client struct {
 	// PrepareRetry can prepare the request for retry operation, for example re-sign it
 	PrepareRetry PrepareRetry
 
-	loggerInit sync.Once
 	clientInit sync.Once
 }
 
@@ -450,21 +449,16 @@ func NewClient() *Client {
 }
 
 func (c *Client) logger() interface{} {
-	c.loggerInit.Do(func() {
-		if c.Logger == nil {
-			return
-		}
+	if c.Logger == nil {
+		return nil
+	}
 
-		switch c.Logger.(type) {
-		case Logger, LeveledLogger:
-			// ok
-		default:
-			// This should happen in dev when they are setting Logger and work on code, not in prod.
-			panic(fmt.Sprintf("invalid logger type passed, must be Logger or LeveledLogger, was %T", c.Logger))
-		}
-	})
-
-	return c.Logger
+	switch c.Logger.(type) {
+	case Logger, LeveledLogger:
+		return c.Logger
+	default:
+		return nil
+	}
 }
 
 // DefaultRetryPolicy provides a default callback for Client.CheckRetry, which
