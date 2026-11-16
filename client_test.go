@@ -87,6 +87,18 @@ func TestFromRequest(t *testing.T) {
 	if req.ContentLength != 2 {
 		t.Fatalf("bad ContentLength: %d", req.ContentLength)
 	}
+
+	// Works with http.NoBody.
+	httpReq, err = http.NewRequest("GET", "/", http.NoBody)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if req, err = FromRequest(httpReq); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if req.body != nil {
+		t.Fatal("expected no body reader func")
+	}
 }
 
 // Since normal ways we would generate a Reader have special cases, use a
