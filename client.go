@@ -551,7 +551,7 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
 	if resp != nil {
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
-			if sleep, ok := parseRetryAfterHeader(resp.Header["Retry-After"]); ok {
+			if sleep, ok := ParseRetryAfterHeader(resp.Header["Retry-After"]); ok {
 				return sleep
 			}
 		}
@@ -565,7 +565,7 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 	return sleep
 }
 
-// parseRetryAfterHeader parses the Retry-After header and returns the
+// ParseRetryAfterHeader parses the Retry-After header and returns the
 // delay duration according to the spec: https://httpwg.org/specs/rfc7231.html#header.retry-after
 // The bool returned will be true if the header was successfully parsed.
 // Otherwise, the header was either not present, or was not parseable according to the spec.
@@ -575,7 +575,7 @@ func DefaultBackoff(min, max time.Duration, attemptNum int, resp *http.Response)
 // Examples:
 // * Retry-After: Fri, 31 Dec 1999 23:59:59 GMT
 // * Retry-After: 120
-func parseRetryAfterHeader(headers []string) (time.Duration, bool) {
+func ParseRetryAfterHeader(headers []string) (time.Duration, bool) {
 	if len(headers) == 0 || headers[0] == "" {
 		return 0, false
 	}
@@ -647,7 +647,7 @@ func LinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Resp
 func RateLimitLinearJitterBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
 	if resp != nil {
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
-			if sleep, ok := parseRetryAfterHeader(resp.Header["Retry-After"]); ok {
+			if sleep, ok := ParseRetryAfterHeader(resp.Header["Retry-After"]); ok {
 				return sleep
 			}
 		}

@@ -838,7 +838,7 @@ func TestParseRetryAfterHeader(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			sleep, ok := parseRetryAfterHeader(test.headers)
+			sleep, ok := ParseRetryAfterHeader(test.headers)
 			if ok != test.ok {
 				t.Fatalf("expected ok=%t, got ok=%t", test.ok, ok)
 			}
