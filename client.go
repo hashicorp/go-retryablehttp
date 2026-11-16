@@ -160,7 +160,7 @@ func (r *Request) BodyBytes() ([]byte, error) {
 // SetBody allows setting the request body.
 //
 // It is useful if a new body needs to be set without constructing a new Request.
-func (r *Request) SetBody(rawBody interface{}) error {
+func (r *Request) SetBody(rawBody any) error {
 	bodyReader, contentLength, err := getBodyReaderAndContentLength(rawBody)
 	if err != nil {
 		return err
@@ -201,7 +201,7 @@ func (r *Request) WriteTo(w io.Writer) (int64, error) {
 	return io.Copy(w, body)
 }
 
-func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, error) {
+func getBodyReaderAndContentLength(rawBody any) (ReaderFunc, int64, error) {
 	var bodyReader ReaderFunc
 	var contentLength int64
 
@@ -312,7 +312,7 @@ func FromRequest(r *http.Request) (*Request, error) {
 }
 
 // NewRequest creates a new wrapped request.
-func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
+func NewRequest(method, url string, rawBody any) (*Request, error) {
 	return NewRequestWithContext(context.Background(), method, url, rawBody)
 }
 
@@ -320,7 +320,7 @@ func NewRequest(method, url string, rawBody interface{}) (*Request, error) {
 //
 // The context controls the entire lifetime of a request and its response:
 // obtaining a connection, sending the request, and reading the response headers and body.
-func NewRequestWithContext(ctx context.Context, method, url string, rawBody interface{}) (*Request, error) {
+func NewRequestWithContext(ctx context.Context, method, url string, rawBody any) (*Request, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return nil, err
@@ -339,7 +339,7 @@ func NewRequestWithContext(ctx context.Context, method, url string, rawBody inte
 // Logger interface allows to use other loggers than
 // standard log.Logger.
 type Logger interface {
-	Printf(string, ...interface{})
+	Printf(string, ...any)
 }
 
 // LeveledLogger is an interface that can be implemented by any logger or a
@@ -348,10 +348,10 @@ type Logger interface {
 // formatting where message string contains a format specifier, use Logger
 // interface.
 type LeveledLogger interface {
-	Error(msg string, keysAndValues ...interface{})
-	Info(msg string, keysAndValues ...interface{})
-	Debug(msg string, keysAndValues ...interface{})
-	Warn(msg string, keysAndValues ...interface{})
+	Error(msg string, keysAndValues ...any)
+	Info(msg string, keysAndValues ...any)
+	Debug(msg string, keysAndValues ...any)
+	Warn(msg string, keysAndValues ...any)
 }
 
 // hookLogger adapts an LeveledLogger to Logger for use by the existing hook functions
@@ -360,7 +360,7 @@ type hookLogger struct {
 	LeveledLogger
 }
 
-func (h hookLogger) Printf(s string, args ...interface{}) {
+func (h hookLogger) Printf(s string, args ...any) {
 	h.Info(fmt.Sprintf(s, args...))
 }
 
@@ -405,7 +405,7 @@ type PrepareRetry func(req *http.Request) error
 // like automatic retries to tolerate minor outages.
 type Client struct {
 	HTTPClient *http.Client // Internal HTTP client.
-	Logger     interface{}  // Customer logger instance. Can be either Logger or LeveledLogger
+	Logger     any          // Customer logger instance. Can be either Logger or LeveledLogger
 
 	RetryWaitMin time.Duration // Minimum time to wait
 	RetryWaitMax time.Duration // Maximum time to wait
@@ -449,7 +449,7 @@ func NewClient() *Client {
 	}
 }
 
-func (c *Client) logger() interface{} {
+func (c *Client) logger() any {
 	c.loggerInit.Do(func() {
 		if c.Logger == nil {
 			return
@@ -888,13 +888,13 @@ func (c *Client) Head(url string) (*http.Response, error) {
 
 // Post is a shortcut for doing a POST request without making a new client.
 // The bodyType parameter sets the "Content-Type" header of the request.
-func Post(url, bodyType string, body interface{}) (*http.Response, error) {
+func Post(url, bodyType string, body any) (*http.Response, error) {
 	return defaultClient.Post(url, bodyType, body)
 }
 
 // Post is a convenience method for doing simple POST requests.
 // The bodyType parameter sets the "Content-Type" header of the request.
-func (c *Client) Post(url, bodyType string, body interface{}) (*http.Response, error) {
+func (c *Client) Post(url, bodyType string, body any) (*http.Response, error) {
 	req, err := NewRequest("POST", url, body)
 	if err != nil {
 		return nil, err

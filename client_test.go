@@ -133,7 +133,7 @@ func TestClient_Do(t *testing.T) {
 	testClientDo(t, &custReader{})
 }
 
-func testClientDo(t *testing.T, body interface{}) {
+func testClientDo(t *testing.T, body any) {
 	// Create a request
 	req, err := NewRequest("PUT", "http://127.0.0.1:28934/v1/foo", body)
 	if err != nil {
@@ -579,7 +579,7 @@ func TestClient_RequestLogHook(t *testing.T) {
 	})
 }
 
-func testClientRequestLogHook(t *testing.T, logger interface{}) {
+func testClientRequestLogHook(t *testing.T, logger any) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			t.Fatalf("bad method: %s", r.Method)
@@ -648,7 +648,7 @@ func TestClient_ResponseLogHook(t *testing.T) {
 	})
 }
 
-func testClientResponseLogHook(t *testing.T, l interface{}, buf *bytes.Buffer) {
+func testClientResponseLogHook(t *testing.T, l any, buf *bytes.Buffer) {
 	passAfter := time.Now().Add(100 * time.Millisecond)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if time.Now().After(passAfter) {
