@@ -805,6 +805,31 @@ func TestClient_CheckRetry(t *testing.T) {
 	}
 }
 
+func TestClient_ZeroValueUsesDefaultPolicies(t *testing.T) {
+	var requests int32
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		http.Error(w, "test_500_body", http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	client := &Client{RetryMax: 1}
+
+	_, err := client.Get(ts.URL)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	if got := atomic.LoadInt32(&requests); got != 2 {
+		t.Fatalf("expected 2 attempts, got %d", got)
+	}
+
+	if !strings.Contains(err.Error(), "giving up after 2 attempt(s)") {
+		t.Fatalf("expected retry exhaustion error, got: %v", err)
+	}
+}
+
 func testStaticTime(t *testing.T) {
 	timeNow = func() time.Time {
 		now, err := time.Parse(time.RFC1123, "Fri, 31 Dec 1999 23:59:57 GMT")

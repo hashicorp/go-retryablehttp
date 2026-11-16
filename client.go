@@ -670,6 +670,16 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		}
 	})
 
+	checkRetry := c.CheckRetry
+	if checkRetry == nil {
+		checkRetry = DefaultRetryPolicy
+	}
+
+	backoff := c.Backoff
+	if backoff == nil {
+		backoff = DefaultBackoff
+	}
+
 	logger := c.logger()
 
 	if logger != nil {
@@ -719,10 +729,10 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 		resp, doErr = c.HTTPClient.Do(req.Request)
 
 		// Check if we should continue with retries.
-		shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, doErr)
+		shouldRetry, checkErr = checkRetry(req.Context(), resp, doErr)
 		if !shouldRetry && doErr == nil && req.responseHandler != nil {
 			respErr = req.responseHandler(resp)
-			shouldRetry, checkErr = c.CheckRetry(req.Context(), resp, respErr)
+			shouldRetry, checkErr = checkRetry(req.Context(), resp, respErr)
 		}
 
 		err := doErr
@@ -768,7 +778,7 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 			c.drainBody(resp.Body)
 		}
 
-		wait := c.Backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
+		wait := backoff(c.RetryWaitMin, c.RetryWaitMax, i, resp)
 		if logger != nil {
 			desc := fmt.Sprintf("%s %s", req.Method, redactURL(req.URL))
 			if resp != nil {
