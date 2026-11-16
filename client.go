@@ -781,6 +781,10 @@ func (c *Client) Do(req *Request) (*http.Response, error) {
 				v.Printf("[DEBUG] %s: retrying in %s (%d left)", desc, wait, remain)
 			}
 		}
+		if deadline, ok := req.Context().Deadline(); ok && time.Now().Add(wait).After(deadline) {
+			c.HTTPClient.CloseIdleConnections()
+			return nil, req.Context().Err()
+		}
 		timer := time.NewTimer(wait)
 		select {
 		case <-req.Context().Done():
