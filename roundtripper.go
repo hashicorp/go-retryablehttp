@@ -48,7 +48,8 @@ func (rt *RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// If we got an error returned by standard library's `Do` method, unwrap it
 	// otherwise we will wind up erroneously re-nesting the error.
 	if _, ok := err.(*url.Error); ok {
-		return resp, errors.Unwrap(err)
+		// A response returned with a redirect error has an already-closed body.
+		return nil, errors.Unwrap(err)
 	}
 
 	return resp, err
