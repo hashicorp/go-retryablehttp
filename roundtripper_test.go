@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -132,6 +133,83 @@ func TestRoundTripper_TransportFailureErrorHandling(t *testing.T) {
 	if !reflect.DeepEqual(expectedError, normalizeError(err)) {
 		t.Fatalf("expected %q, got %q", expectedError, err)
 	}
+}
+
+func TestRoundTripper_RedirectError(t *testing.T) {
+	redirectErr := errors.New("redirect rejected")
+	for _, tc := range []struct {
+		name        string
+		redirectErr error
+		wantErr     error
+	}{
+		{"rejected redirect", redirectErr, redirectErr},
+		{"use last response", http.ErrUseLastResponse, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := &roundTripperTestBody{Reader: strings.NewReader("redirect body")}
+			retryClient := NewClient()
+			retryClient.Logger = nil
+			retryClient.RetryMax = 0
+			retryClient.ErrorHandler = PassthroughErrorHandler
+			retryClient.HTTPClient = &http.Client{
+				Transport: roundTripperTestFunc(func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: http.StatusFound,
+						Header:     http.Header{"Location": []string{"/next"}},
+						Body:       body,
+						Request:    req,
+					}, nil
+				}),
+				CheckRedirect: func(*http.Request, []*http.Request) error {
+					return tc.redirectErr
+				},
+			}
+
+			req, err := http.NewRequest(http.MethodGet, "http://example.test/start", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := retryClient.StandardClient().Transport.RoundTrip(req)
+			if err != tc.wantErr {
+				t.Fatalf("expected error %v, got %v", tc.wantErr, err)
+			}
+			if tc.wantErr != nil {
+				if resp != nil {
+					t.Error("expected nil response on a rejected redirect")
+				}
+				if body.closeCount != 1 {
+					t.Errorf("expected redirect body to be closed once, got %d", body.closeCount)
+				}
+				return
+			}
+			if resp == nil || resp.StatusCode != http.StatusFound {
+				t.Fatalf("expected redirect response, got %v", resp)
+			}
+			defer resp.Body.Close()
+			if body.closeCount != 0 {
+				t.Errorf("expected redirect body to remain open, got %d closes", body.closeCount)
+			}
+			if b, err := io.ReadAll(resp.Body); err != nil || string(b) != "redirect body" {
+				t.Fatalf("expected readable redirect body, got %q, %v", b, err)
+			}
+		})
+	}
+}
+
+type roundTripperTestFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperTestFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+type roundTripperTestBody struct {
+	io.Reader
+	closeCount int
+}
+
+func (b *roundTripperTestBody) Close() error {
+	b.closeCount++
+	return nil
 }
 
 func normalizeError(err error) error {
