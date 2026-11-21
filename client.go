@@ -179,6 +179,7 @@ func (r *Request) SetBody(rawBody interface{}) error {
 			return io.NopCloser(body), nil
 		}
 	} else {
+		r.Body = nil
 		r.GetBody = func() (io.ReadCloser, error) { return http.NoBody, nil }
 	}
 	return nil
