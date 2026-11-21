@@ -191,6 +191,9 @@ func (r *Request) SetBody(rawBody interface{}) error {
 // written. Any error encountered during the write is also returned.
 // The signature matches io.WriterTo interface.
 func (r *Request) WriteTo(w io.Writer) (int64, error) {
+	if r.body == nil {
+		return 0, nil
+	}
 	body, err := r.body()
 	if err != nil {
 		return 0, err
