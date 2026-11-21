@@ -149,6 +149,9 @@ func (r *Request) BodyBytes() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if closer, ok := body.(io.Closer); ok {
+		defer closer.Close()
+	}
 	buf := new(bytes.Buffer)
 	_, err = buf.ReadFrom(body)
 	if err != nil {
