@@ -262,6 +262,14 @@ func getBodyReaderAndContentLength(rawBody interface{}) (ReaderFunc, int64, erro
 		}
 		contentLength = int64(body.Len())
 
+	case *strings.Reader:
+		snapshot := *body
+		bodyReader = func() (io.Reader, error) {
+			r := snapshot
+			return &r, nil
+		}
+		contentLength = int64(body.Len())
+
 	// Compat case
 	case io.ReadSeeker:
 		raw := body
